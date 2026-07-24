@@ -30,7 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .update(let host):
             let transitions = store.applyUpdate(host)
             if Settings.notificationsEnabled {
-                for t in transitions { notify(t) }
+                // Don't notify on transitions into `working` — too noisy (agents flap idle↔working).
+                for t in transitions where t.to.lowercased() != "working" { notify(t) }
             }
         case .remove(let id):
             store.applyRemove(id)
