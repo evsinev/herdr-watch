@@ -80,8 +80,21 @@ final class SSEClient {
             // AsyncLineSequence usually strips terminators, but strip a stray CR defensively
             let line = rawLine.hasSuffix("\r") ? String(rawLine.dropLast()) : rawLine
             Diag.log("line[\(line.count)]: \(line.prefix(80))")
-            if line.isEmpty {
-                // end of one SSE frame
+            if line.hasPrefix("data:") {
+                var value = String(line.dropFirst("data:".count))
+                if value.hasPrefix(" ") { value.removeFirst() }
+                dataBuffer += value
+                // The server emits one complete JSON object per `data:` line, and
+                // URLSession's AsyncLineSequence does NOT surface the blank separator
+                // lines — so decode eagerly here instead of waiting for an empty line.
+                if let raw = dataBuffer.data(using: .utf8),
+                   let event = try? JSONDecoder().decode(StreamEvent.self, from: raw) {
+                    Diag.log("frame ok: \(dataBuffer.count) bytes dispatched")
+                    dataBuffer = ""
+                    await MainActor.run { self.onEvent(event) }
+                }
+            } else if line.isEmpty {
+                // backstop for spec-compliant blank-line framing (rarely reached here)
                 let json = dataBuffer
                 dataBuffer = ""
                 guard !json.isEmpty, let raw = json.data(using: .utf8) else { continue }
@@ -92,10 +105,6 @@ final class SSEClient {
                     Diag.log("DECODE FAIL: \(error)")
                     Diag.log("json head: \(json.prefix(200))")
                 }
-            } else if line.hasPrefix("data:") {
-                var value = String(line.dropFirst("data:".count))
-                if value.hasPrefix(" ") { value.removeFirst() }
-                dataBuffer += value
             }
             // other SSE fields (event:, id:, retry:, ":" comments) are ignored
         }
