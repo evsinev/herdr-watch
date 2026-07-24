@@ -132,6 +132,8 @@ jobs:
 
       - name: Build & push
         uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false   # don't upload the .dockerbuild build-record artifact
         with:
           context: docker
           file: docker/Dockerfile.jvm
@@ -159,7 +161,7 @@ jobs:
       - name: Create / update release
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/**/*
+          files: dist/**/herdr-watch-*   # only our jar + native binaries, nothing else
           generate_release_notes: true
           body: |
             Docker image:
