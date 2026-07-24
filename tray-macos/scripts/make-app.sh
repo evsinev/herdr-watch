@@ -15,5 +15,9 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/HerdrWatchTray"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 
+# Ad-hoc sign so UNUserNotificationCenter registers (stable code identity) and Gatekeeper
+# is a little happier. Non-fatal if codesign is unavailable.
+codesign --force --sign - "$APP" 2>/dev/null && echo "ad-hoc signed" || echo "codesign skipped"
+
 echo "Built $(pwd)/$APP"
 echo "Run:  open $APP     (or: ./$APP/Contents/MacOS/HerdrWatchTray)"

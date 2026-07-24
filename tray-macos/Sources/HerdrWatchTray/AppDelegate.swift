@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: SettingsWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Notifier.shared.requestAuthorization()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         render()
 
@@ -24,11 +25,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handle(_ event: StreamEvent) {
         switch event.payload {
-        case .snapshot(let list): store.applySnapshot(list)
-        case .update(let host):   store.applyUpdate(host)
-        case .remove(let id):     store.applyRemove(id)
+        case .snapshot(let list):
+            store.applySnapshot(list)
+        case .update(let host):
+            let transitions = store.applyUpdate(host)
+            if Settings.notificationsEnabled {
+                for t in transitions { notify(t) }
+            }
+        case .remove(let id):
+            store.applyRemove(id)
         }
         render()
+    }
+
+    private func notify(_ t: FleetStore.Transition) {
+        let title = "\(t.host) · \(t.title)"
+        let body: String
+        let sound: Bool
+        switch t.to.lowercased() {
+        case "blocked": body = "⛔ needs input"; sound = true
+        case "done":    body = "✅ finished";     sound = false
+        default:        body = "\(t.from ?? "?") → \(t.to)"; sound = false
+        }
+        Notifier.shared.post(title: title, body: body, sound: sound)
     }
 
     private func reconnect() {
