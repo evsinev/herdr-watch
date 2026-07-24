@@ -65,8 +65,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateIcon() {
         guard let button = statusItem.button else { return }
+        button.imagePosition = .imageLeading   // icon on the left, counter text on the right
         if !store.connected {
             button.image = AgentStatus.statusItemImage(tint: nil)
+            button.title = ""
             button.appearsDisabled = true
             button.toolTip = "herdr-watch — reconnecting…"
             return
@@ -74,7 +76,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         button.appearsDisabled = false
         button.image = AgentStatus.statusItemImage(tint: store.attentionTint())
         let c = store.counts()
+        button.title = Settings.showCounter ? counterText(c) : ""
         button.toolTip = "herdr-watch — \(c.blocked) blocked · \(c.done) done · \(c.working) working"
+    }
+
+    private func counterText(_ c: FleetStore.Counts) -> String {
+        var parts: [String] = []
+        if c.blocked > 0 { parts.append("⛔\(c.blocked)") }
+        if c.done > 0 { parts.append("✅\(c.done)") }
+        return parts.joined(separator: " ")
     }
 
     private func buildMenu() -> NSMenu {
