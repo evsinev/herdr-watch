@@ -1,12 +1,16 @@
-# Runtime-only image for the herdr-watch fat-jar.
-# The jar is built beforehand in the `fatjar` CI job and copied into this build
-# context as `herdr-watch-runner.jar` — no Maven/Node runs inside the image.
-# Bytecode is arch-independent, so the same jar works on every platform; buildx
-# just varies the temurin base per architecture (amd64/arm64).
+# Runtime image built from the Quarkus fast-jar (layered) layout.
+# COPY order goes from the most stable / largest layer to the most volatile one,
+# so the ~18 MB `lib/` dependency layer keeps its digest across builds and the
+# registry only stores/pushes the small `app/` + `quarkus/` layers that actually
+# change. The fast-jar is produced beforehand (`./mvnw package`) and its
+# `quarkus-app/` directory is placed into this build context.
 FROM eclipse-temurin:21-jre
+WORKDIR /deployments
 
-WORKDIR /app
-COPY herdr-watch-runner.jar /app/app.jar
+COPY quarkus-app/lib/     /deployments/lib/
+COPY quarkus-app/*.jar    /deployments/
+COPY quarkus-app/app/     /deployments/app/
+COPY quarkus-app/quarkus/ /deployments/quarkus/
 
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+ENTRYPOINT ["java", "-jar", "/deployments/quarkus-run.jar"]
