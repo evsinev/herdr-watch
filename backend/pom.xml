@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.payneteasy</groupId>
+    <artifactId>herdr-watch</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+
+    <properties>
+        <compiler-plugin.version>3.13.0</compiler-plugin.version>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
+        <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
+        <quarkus.platform.version>3.15.1</quarkus.platform.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>${quarkus.platform.group-id}</groupId>
+                <artifactId>${quarkus.platform.artifact-id}</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- REST + JSON (Jackson) -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-jackson</artifactId>
+        </dependency>
+        <!-- SSE support is part of quarkus-rest -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest</artifactId>
+        </dependency>
+        <!-- Config mapping for the servers list -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-arc</artifactId>
+        </dependency>
+        <!-- YAML config (application.yaml) -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-config-yaml</artifactId>
+        </dependency>
+        <!-- Quinoa: собирает фронтенд (../frontend) и отдаёт его из этого же
+             приложения — один артефакт, один процесс. Линия 2.5.x = Quarkus 3.15 LTS. -->
+        <dependency>
+            <groupId>io.quarkiverse.quinoa</groupId>
+            <artifactId>quarkus-quinoa</artifactId>
+            <version>2.5.5</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>${quarkus.platform.group-id}</groupId>
+                <artifactId>quarkus-maven-plugin</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <extensions>true</extensions>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>build</goal>
+                            <goal>generate-code</goal>
+                            <goal>generate-code-tests</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${compiler-plugin.version}</version>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- ./mvnw package -Puber  →  единый self-contained fat-jar:
+             target/herdr-watch-<version>-runner.jar (все зависимости + Quinoa-фронтенд).
+             Без профиля собирается обычный fast-jar (target/quarkus-app/quarkus-run.jar). -->
+        <profile>
+            <id>uber</id>
+            <properties>
+                <quarkus.package.jar.type>uber-jar</quarkus.package.jar.type>
+            </properties>
+        </profile>
+
+        <!-- ./mvnw package -Dnative  →  нативный бинарь (GraalVM для JDK 21):
+             target/herdr-watch-<version>-runner. Собирать локальным GraalVM
+             (JAVA_HOME/GRAALVM_HOME), Quinoa соберёт фронтенд внутрь. Не сочетать с -Puber. -->
+        <profile>
+            <id>native</id>
+            <activation>
+                <property>
+                    <name>native</name>
+                </property>
+            </activation>
+            <properties>
+                <quarkus.native.enabled>true</quarkus.native.enabled>
+                <quarkus.native.enable-https-url-handler>true</quarkus.native.enable-https-url-handler>
+                <skipITs>false</skipITs>
+            </properties>
+        </profile>
+    </profiles>
+</project>

@@ -1,0 +1,55 @@
+quarkus:
+  http:
+    port: 8080
+    cors:
+      ~: true
+      origins: "http://localhost:5173"   # Vite dev-сервер фронта
+  log:
+    category:
+      "com.payneteasy.herdrwatch":
+        level: INFO
+  # Quinoa: сборка и отдача фронтенда из этого же Quarkus-приложения.
+  # prod: `mvn package` соберёт ../frontend и упакует dist в jar.
+  # dev:  `quarkus:dev` поднимет Vite (:5173) и будет проксировать к нему.
+  quinoa:
+    ui-dir: ../frontend        # фронтенд — сиблинг backend
+    build-dir: dist            # выход Vite
+    enable-spa-routing: true   # любой путь → index.html
+    # что Quinoa НЕ трогает (отдаёт Quarkus'у) — и для SPA-хендлера, и для dev-прокси.
+    # без этого /api форвардился бы на Vite и зацикливался с его прокси.
+    ignored-path-prefixes:
+      - /api
+      - /q
+    dev-server:
+      port: 5173               # порт Vite, к которому Quinoa проксирует в dev
+
+# Bootstrap-список herdr-серверов для мониторинга.
+# id      — логическое имя в UI
+# host    — ssh-таргет (имя из ~/.ssh/config или user@host)
+# Остальное необязательно (есть дефолты): herdr-path, poll-interval,
+# reconnect-delay, enabled, ssh-extra-opts.
+herdr-watch:
+  # Telegram-оповещения: blocked («нужен ввод») и done («задача завершена»).
+  # Значения обычно задаются через env; по умолчанию выключено.
+  telegram:
+    enabled: ${TELEGRAM_ENABLED:false}
+    bot-token: ${TELEGRAM_BOT_TOKEN:}
+    chat-id: ${TELEGRAM_CHAT_ID:}
+    notify-blocked: true
+    notify-done: true
+  hosts:
+    - id: local
+      host: local              # ярлык (для local ssh-таргет не используется)
+      local: true              # читать локальный herdr без ssh (текущий пользователь)
+      herdr-path: /opt/homebrew/bin/herdr
+      poll-interval: 2
+    - id: m3-local
+      host: m3-local           # обычный ssh-хост (имя из ~/.ssh/config)
+      herdr-path: /opt/homebrew/bin/herdr
+      poll-interval: 2
+    - id: dqa1
+      host: dqa1
+      poll-interval: 2
+    - id: dqa2
+      host: dqa2
+      poll-interval: 2

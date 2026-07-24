@@ -1,0 +1,79 @@
+// JSON-контракт бэкенда (camelCase). Схемы herdr выверены в спецификации.
+
+export type Health = "CONNECTED" | "DEGRADED" | "UNREACHABLE";
+
+export interface WorktreeInfo {
+  branch: string | null;
+  path: string | null;
+  label: string | null;
+  detached: boolean;
+  prunable: boolean;
+  linked: boolean;
+  openWorkspaceId: string | null;
+}
+
+export interface AgentInfo {
+  title: string | null; // terminal_title_stripped
+  kind: string | null; // herdr "agent": claude / codex / pi / ...
+  status: string | null; // agent_status: idle|working|blocked|done|unknown
+  workspaceId: string | null;
+  tabId: string | null;
+  paneId: string | null;
+  focused: boolean;
+  cwd: string | null;
+}
+
+export interface WorkspaceInfo {
+  id: string; // workspace_id, напр. "wF"
+  label: string | null;
+  number: number | null; // человекочитаемый порядковый
+  agentStatus: string | null; // rollup от herdr — используем как есть
+  focused: boolean;
+  paneCount: number;
+  tabCount: number;
+  worktrees: WorktreeInfo[];
+}
+
+export interface HostState {
+  id: string;
+  host: string;
+  health: Health;
+  lastUpdate: number | null; // unix seconds
+  workspaces: WorkspaceInfo[];
+  agents: AgentInfo[];
+}
+
+// SSE-события (безымянные message-события {type, data}).
+export type StreamEvent =
+  | { type: "snapshot"; data: HostState[] }
+  | { type: "host_update"; data: HostState }
+  | { type: "host_remove"; data: { id: string } };
+
+// Settings / CRUD.
+export interface ServerView {
+  id: string;
+  host: string;
+  herdrPath: string;
+  pollInterval: number;
+  reconnectDelay: number;
+  enabled: boolean;
+  sshExtraOpts: string | null;
+  local: boolean;
+  health: Health;
+  lastUpdate: number | null;
+}
+
+export interface HostRequest {
+  id: string;
+  host: string;
+  herdrPath?: string;
+  pollInterval: number;
+  reconnectDelay: number;
+  enabled: boolean;
+  sshExtraOpts?: string | null;
+  local: boolean;
+}
+
+export interface ApiErrors {
+  errors: Record<string, string>;
+}

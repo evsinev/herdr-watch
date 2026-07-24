@@ -1,0 +1,13 @@
+# local helper scripts (may contain secrets) — do not commit
+build.sh
+run.sh
+
+# build artifacts
+backend/target/
+frontend/node_modules/
+frontend/dist/
+
+# misc
+**/.DS_Store
+*.log
+.idea/

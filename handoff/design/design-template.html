@@ -1,0 +1,200 @@
+
+
+<div style="min-height: 100vh; background: #0b0d10; color: #e6e8ec; font-family: 'IBM Plex Sans', system-ui, sans-serif;">
+
+  <div style="position: sticky; top: 0; z-index: 20; background: rgba(11,13,16,0.94); backdrop-filter: blur(8px); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 0 28px; display: flex; align-items: stretch; gap: 28px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 16px 0;">
+      <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 15px; letter-spacing: 0.02em; color: #e6e8ec;">herdr-watch</span>
+      <span style="font-size: 11px; color: #5a5f68; letter-spacing: 0.04em; text-transform: uppercase;">fleet monitor</span>
+    </div>
+    <div style="display: flex; align-items: stretch;">
+      <div sc-camel-on-click="{{ goMonitor }}" style="display: flex; align-items: center; padding: 0 4px; margin-right: 22px; font-size: 13px; font-weight: 500; letter-spacing: 0.01em; cursor: pointer; color: {{ nav.monColor }}; border-bottom: 2px solid {{ nav.monBorder }};">Monitor</div>
+      <div sc-camel-on-click="{{ goSettings }}" style="display: flex; align-items: center; padding: 0 4px; font-size: 13px; font-weight: 500; letter-spacing: 0.01em; cursor: pointer; color: {{ nav.setColor }}; border-bottom: 2px solid {{ nav.setBorder }};">Settings</div>
+    </div>
+    <div style="flex: 1;"></div>
+    <sc-if value="{{ isMonitor }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; align-items: center; gap: 18px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px;">
+        <span style="color: #8b909a;"><span style="color: #e6e8ec; font-weight: 500;">{{ summary.totalHosts }}</span> hosts</span>
+        <sc-for list="{{ summary.chips }}" as="chip" hint-placeholder-count="2">
+          <span style="display: inline-flex; align-items: center; gap: 6px;">
+            <span style="width: 7px; height: 7px; border-radius: 50%; background: {{ chip.color }};"></span>
+            <span style="color: {{ chip.color }}; font-weight: 500;">{{ chip.value }}</span>
+            <span style="color: #8b909a;">{{ chip.label }}</span>
+          </span>
+        </sc-for>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{ isMonitor }}" hint-placeholder-val="{{ true }}">
+  <div style="padding: 24px 28px 64px; display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; align-items: start; max-width: 1600px; margin: 0 auto;">
+    <sc-for list="{{ hosts }}" as="host" hint-placeholder-count="4">
+      <div style="background: #14171d; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; overflow: hidden; opacity: {{ host.opacity }};">
+        <div style="padding: 14px 16px 12px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 14px; color: #e6e8ec;">{{ host.id }}</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #5a5f68;">{{ host.host }}</span>
+            <span style="flex: 1;"></span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 5px; background: {{ host.healthBg }}; border: 1px solid {{ host.healthBorder }};">
+              <span style="width: 7px; height: 7px; border-radius: 50%; background: {{ host.healthColor }};"></span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; color: {{ host.healthColor }};">{{ host.healthLabel }}</span>
+            </span>
+          </div>
+          <div style="margin-top: 6px; font-size: 11.5px; color: #6b717b; font-family: 'JetBrains Mono', monospace;">{{ host.meta }}</div>
+        </div>
+        <sc-for list="{{ host.workspaces }}" as="ws" hint-placeholder-count="2">
+          <div style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <div style="display: flex; align-items: center; gap: 8px; padding: 9px 16px 7px; background: {{ ws.headerBg }};">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #5a5f68; min-width: 12px;">{{ ws.ordinal }}</span>
+              <span style="width: 7px; height: 7px; border-radius: 50%; background: {{ ws.dotColor }}; flex-shrink: 0;"></span>
+              <span style="font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #c8ccd2;">{{ ws.project }}</span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #5a5f68;">{{ ws.wid }}</span>
+              <sc-if value="{{ ws.focused }}" hint-placeholder-val="{{ true }}">
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #d0a24a; border: 1px solid rgba(208,162,74,0.4); border-radius: 4px; padding: 1px 5px; letter-spacing: 0.04em;">focused</span>
+              </sc-if>
+            </div>
+            <sc-for list="{{ ws.agents }}" as="agent" hint-placeholder-count="2">
+              <div style="display: flex; align-items: center; gap: 9px; padding: 6px 16px 6px 30px; background: {{ agent.rowBg }};">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: {{ agent.statusColor }}; flex-shrink: 0; box-shadow: 0 0 0 3px {{ agent.dotHalo }};"></span>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: #d6d9df; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ agent.title }}</span>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #7a808a;">{{ agent.kind }}</span>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #4c515a;">{{ agent.pane }}</span>
+                <span style="flex: 1;"></span>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: {{ agent.statusColor }}; background: {{ agent.statusBg }}; border: 1px solid {{ agent.statusBorder }}; border-radius: 4px; padding: 2px 8px; flex-shrink: 0;">{{ agent.status }}</span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ ws.hasWorktrees }}" hint-placeholder-val="{{ false }}">
+              <sc-for list="{{ ws.worktrees }}" as="wt" hint-placeholder-count="1">
+                <div style="display: flex; align-items: center; gap: 7px; padding: 3px 16px 3px 44px;">
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #4c515a; flex-shrink: 0;">⌥</span>
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: #7a808a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ wt.branch }}</span>
+                  <sc-if value="{{ wt.hasOpen }}" hint-placeholder-val="{{ true }}">
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #4c515a; flex-shrink: 0;">{{ wt.openLabel }}</span>
+                  </sc-if>
+                  <span style="flex: 1;"></span>
+                  <sc-if value="{{ wt.hasFlag }}" hint-placeholder-val="{{ false }}">
+                    <span style="font-family: 'JetBrains Mono', monospace; font-size: 9.5px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: {{ wt.flagColor }}; background: {{ wt.flagBg }}; border: 1px solid {{ wt.flagBorder }}; border-radius: 3px; padding: 1px 6px; flex-shrink: 0;">{{ wt.flagLabel }}</span>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </sc-if>
+          </div>
+        </sc-for>
+        <sc-if value="{{ host.empty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 18px 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #4c515a; text-align: center;">— no workspaces · last contact lost —</div>
+        </sc-if>
+      </div>
+    </sc-for>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+  <div style="padding: 28px 28px 64px; max-width: 1100px; margin: 0 auto;">
+    <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 20px;">
+      <div>
+        <div style="font-size: 17px; font-weight: 600; color: #e6e8ec;">Hosts</div>
+        <div style="font-size: 12.5px; color: #6b717b; margin-top: 4px; max-width: 560px; line-height: 1.5;">Servers herdr-watch connects to over SSH. Changes save to the config and take effect by (re)connecting that host — no full restart.</div>
+      </div>
+      <button sc-camel-on-click="{{ openAdd }}" style="flex-shrink: 0; background: #378ADD; color: #fff; border: none; border-radius: 6px; padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer;">+ Add host</button>
+    </div>
+
+    <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+      <div style="border: 1px dashed rgba(255,255,255,0.14); border-radius: 10px; padding: 56px 24px; text-align: center;">
+        <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #5a5f68;">no hosts configured</div>
+        <div style="font-size: 14px; color: #c8ccd2; margin-top: 10px; font-weight: 500;">Add your first host to start watching the fleet</div>
+        <button sc-camel-on-click="{{ openAdd }}" style="margin-top: 18px; background: #378ADD; color: #fff; border: none; border-radius: 6px; padding: 9px 18px; font-size: 13px; font-weight: 600; cursor: pointer;">+ Add your first host</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ hasHosts }}" hint-placeholder-val="{{ true }}">
+    <div style="border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; overflow: hidden; background: #14171d;">
+      <div style="display: grid; grid-template-columns: 1fr 1.3fr 1.7fr 0.7fr 1fr 0.8fr 250px; gap: 12px; padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: #6b717b; font-weight: 600;">
+        <div>id</div><div>host</div><div>herdr-path</div><div>poll</div><div>reconnect</div><div>enabled</div><div style="text-align: right;">status / actions</div>
+      </div>
+      <sc-for list="{{ settingsRows }}" as="row" hint-placeholder-count="4">
+        <div style="display: grid; grid-template-columns: 1fr 1.3fr 1.7fr 0.7fr 1fr 0.8fr 250px; gap: 12px; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); align-items: center; opacity: {{ row.rowOpacity }};">
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500; color: #e6e8ec; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ row.id }}</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #a4a9b2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;">{{ row.host }}</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #7a808a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;">{{ row.herdrPath }}</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #a4a9b2;">{{ row.poll }}s</div>
+          <div style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #a4a9b2;">{{ row.reconnect }}s</div>
+          <div>
+            <div sc-camel-on-click="{{ row.onToggle }}" style="width: 34px; height: 19px; border-radius: 10px; background: {{ row.toggleBg }}; position: relative; cursor: pointer; transition: background 0.15s;">
+              <div style="position: absolute; top: 2px; left: {{ row.knobLeft }}; width: 15px; height: 15px; border-radius: 50%; background: #fff; transition: left 0.15s;"></div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
+            <sc-if value="{{ row.notConfirming }}" hint-placeholder-val="{{ true }}">
+              <span style="display: inline-flex; align-items: center; gap: 6px;">
+                <span style="width: 7px; height: 7px; border-radius: 50%; background: {{ row.healthColor }};"></span>
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: {{ row.healthColor }};">{{ row.healthLabel }}</span>
+              </span>
+              <button sc-camel-on-click="{{ row.onEdit }}" style="background: transparent; border: 1px solid rgba(255,255,255,0.14); color: #c8ccd2; border-radius: 5px; padding: 4px 9px; font-size: 11.5px; cursor: pointer;">edit</button>
+              <button sc-camel-on-click="{{ row.onAskRemove }}" style="background: transparent; border: 1px solid rgba(255,255,255,0.14); color: #9aa0aa; border-radius: 5px; padding: 4px 9px; font-size: 11.5px; cursor: pointer;">remove</button>
+            </sc-if>
+            <sc-if value="{{ row.confirming }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size: 11.5px; color: #E24B4A;">Remove {{ row.id }}?</span>
+              <button sc-camel-on-click="{{ row.onConfirmRemove }}" style="background: #E24B4A; border: none; color: #fff; border-radius: 5px; padding: 4px 10px; font-size: 11.5px; font-weight: 600; cursor: pointer;">Remove</button>
+              <button sc-camel-on-click="{{ row.onCancelRemove }}" style="background: transparent; border: 1px solid rgba(255,255,255,0.14); color: #c8ccd2; border-radius: 5px; padding: 4px 9px; font-size: 11.5px; cursor: pointer;">Cancel</button>
+            </sc-if>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    </sc-if>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ formOpen }}" hint-placeholder-val="{{ false }}">
+  <div style="position: fixed; inset: 0; z-index: 40; background: rgba(6,7,9,0.66); backdrop-filter: blur(2px); display: flex; align-items: flex-start; justify-content: center; padding: 64px 20px; overflow-y: auto;">
+    <div style="width: 480px; max-width: 100%; background: #14171d; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 22px 24px 24px;">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px;">
+        <div style="font-size: 16px; font-weight: 600; color: #e6e8ec;">{{ form.title }}</div>
+        <div sc-camel-on-click="{{ closeForm }}" style="cursor: pointer; color: #6b717b; font-family: 'JetBrains Mono', monospace; font-size: 16px; line-height: 1;">✕</div>
+      </div>
+      <div style="font-size: 12px; color: #6b717b; margin-bottom: 20px;">Saves to config · takes effect on (re)connect</div>
+
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div>
+          <div style="font-size: 12px; color: #a4a9b2; margin-bottom: 6px; font-weight: 500;">id <span style="color:#6b717b;">— logical name shown in the UI</span></div>
+          <input value="{{ form.id }}" sc-camel-on-input="{{ form.onId }}" placeholder="m3-local" style="width: 100%; background: #0e1116; border: 1px solid {{ form.idBorder }}; border-radius: 6px; padding: 9px 11px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #e6e8ec;">
+          <sc-if value="{{ form.idError }}" hint-placeholder-val="{{ false }}"><div style="font-size: 11.5px; color: #E24B4A; margin-top: 5px;">{{ form.idError }}</div></sc-if>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: #a4a9b2; margin-bottom: 6px; font-weight: 500;">host <span style="color:#6b717b;">— ssh alias or user@host</span></div>
+          <input value="{{ form.host }}" sc-camel-on-input="{{ form.onHost }}" placeholder="dqa1  ·  deploy@10.0.0.4" style="width: 100%; background: #0e1116; border: 1px solid {{ form.hostBorder }}; border-radius: 6px; padding: 9px 11px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #e6e8ec;">
+          <sc-if value="{{ form.hostError }}" hint-placeholder-val="{{ false }}"><div style="font-size: 11.5px; color: #E24B4A; margin-top: 5px;">{{ form.hostError }}</div></sc-if>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: #a4a9b2; margin-bottom: 6px; font-weight: 500;">herdr-path <span style="color:#6b717b;">— path to herdr on the remote</span></div>
+          <input value="{{ form.herdrPath }}" sc-camel-on-input="{{ form.onHerdr }}" placeholder="herdr" style="width: 100%; background: #0e1116; border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; padding: 9px 11px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #e6e8ec;">
+        </div>
+        <div style="display: flex; gap: 14px;">
+          <div style="flex: 1;">
+            <div style="font-size: 12px; color: #a4a9b2; margin-bottom: 6px; font-weight: 500;">poll interval <span style="color:#6b717b;">(s)</span></div>
+            <input value="{{ form.poll }}" sc-camel-on-input="{{ form.onPoll }}" placeholder="2" style="width: 100%; background: #0e1116; border: 1px solid {{ form.pollBorder }}; border-radius: 6px; padding: 9px 11px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #e6e8ec;">
+            <sc-if value="{{ form.pollError }}" hint-placeholder-val="{{ false }}"><div style="font-size: 11.5px; color: #E24B4A; margin-top: 5px;">{{ form.pollError }}</div></sc-if>
+          </div>
+          <div style="flex: 1;">
+            <div style="font-size: 12px; color: #a4a9b2; margin-bottom: 6px; font-weight: 500;">reconnect delay <span style="color:#6b717b;">(s)</span></div>
+            <input value="{{ form.reconnect }}" sc-camel-on-input="{{ form.onReconnect }}" placeholder="5" style="width: 100%; background: #0e1116; border: 1px solid {{ form.reconnectBorder }}; border-radius: 6px; padding: 9px 11px; font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #e6e8ec;">
+            <sc-if value="{{ form.reconnectError }}" hint-placeholder-val="{{ false }}"><div style="font-size: 11.5px; color: #E24B4A; margin-top: 5px;">{{ form.reconnectError }}</div></sc-if>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding-top: 2px;">
+          <div sc-camel-on-click="{{ form.onToggle }}" style="width: 34px; height: 19px; border-radius: 10px; background: {{ form.toggleBg }}; position: relative; cursor: pointer; transition: background 0.15s;">
+            <div style="position: absolute; top: 2px; left: {{ form.knobLeft }}; width: 15px; height: 15px; border-radius: 50%; background: #fff; transition: left 0.15s;"></div>
+          </div>
+          <div style="font-size: 13px; color: #c8ccd2;">enabled <span style="color:#6b717b; font-size:12px;">— connect this host</span></div>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+        <button sc-camel-on-click="{{ closeForm }}" style="background: transparent; border: 1px solid rgba(255,255,255,0.14); color: #c8ccd2; border-radius: 6px; padding: 9px 16px; font-size: 13px; cursor: pointer;">Cancel</button>
+        <button sc-camel-on-click="{{ form.onSave }}" style="background: #378ADD; border: none; color: #fff; border-radius: 6px; padding: 9px 18px; font-size: 13px; font-weight: 600; cursor: pointer;">{{ form.saveLabel }}</button>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+</div>
