@@ -1,8 +1,25 @@
 # herdr-watch
 
 A read-only web dashboard that aggregates the live state of several
-[`herdr`](https://github.com/) servers — a terminal multiplexer for AI coding
+[`herdr`](https://github.com/ogulcancelik/herdr) servers — a terminal multiplexer for AI coding
 agents — into one monitor: one local machine plus remote servers over SSH.
+
+**Monitor** — host cards → workspace groups → agent rows → nested worktrees, with
+per-host health badges, priority sorting (blocked on top), and a live summary bar.
+
+![herdr-watch — Monitor view](docs/screenshots/monitor.png)
+
+**Compact** — one equal-size card per agent for small glance displays; status is
+shown by color alone (host on top, agent label below).
+
+![herdr-watch — Compact view](docs/screenshots/compact.png)
+
+**Settings** — a table of hosts with live health dots and an add/edit/remove form;
+changes **(re)connect the host on the fly — no restart**.
+
+![herdr-watch — Settings view](docs/screenshots/settings.png)
+
+> Screenshots are rendered from the design prototype in `handoff/` (mock fleet data).
 
 There is no federation between `herdr` servers (each is a separate process with
 its own Unix socket), so herdr-watch fans out over SSH, keeps one long-lived
@@ -11,10 +28,25 @@ consistent view streamed to the browser over SSE. The machine running the backen
 can also be read **directly, without SSH** (a host with `local: true`), so the
 current user's own `herdr` session shows up alongside the remote ones.
 
-```
-local herdr ─┐
-host dqa1 ──┼─► SshSource (1 ssh conn) ─► Registry ─► SSE /api/stream ─► React dashboard
-host dqa2 ──┘   remote poll loop          in-memory    REST /api/servers (CRUD)
+```mermaid
+flowchart LR
+    L["local herdr"]
+    D1["host dqa1"]
+    D2["host dqa2"]
+    S["SshSource<br/>1 ssh conn · remote poll loop"]
+    R["Registry<br/>in-memory"]
+    SSE["SSE /api/stream"]
+    REST["REST /api/servers (CRUD)"]
+    UI["React dashboard"]
+
+    L --> S
+    D1 --> S
+    D2 --> S
+    S --> R
+    R --> SSE
+    R --> REST
+    SSE --> UI
+    REST --> UI
 ```
 
 Three views, switched by the top nav (**Monitor · Compact · Settings**):
