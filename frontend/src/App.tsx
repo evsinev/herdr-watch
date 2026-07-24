@@ -26,6 +26,12 @@ export default function App() {
     return () => clearTimeout(t);
   }, [connected]);
 
+  // Reflect offline onto <html> so CSS can keep the header (its disconnect banner)
+  // visible even in fullscreen, where the header is otherwise hidden.
+  useEffect(() => {
+    document.documentElement.toggleAttribute("data-offline", offline);
+  }, [offline]);
+
   return (
     <div className="min-h-screen bg-page text-ink">
       <Header view={view} onView={setView} hosts={hosts} offline={offline} />

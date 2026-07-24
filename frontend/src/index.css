@@ -16,8 +16,9 @@ body,
 }
 
 /* Fullscreen (from the Compact view) hides the app header for a clean glance display;
-   the Compact toolbar with its Exit button stays. */
-html:fullscreen header {
+   the Compact toolbar with its Exit button stays. Exception: while offline, keep the
+   header visible so its "backend disconnected — reconnecting…" banner is still shown. */
+html:fullscreen:not([data-offline]) header {
   display: none;
 }
 
