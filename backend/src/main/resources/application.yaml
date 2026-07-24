@@ -53,3 +53,17 @@ herdr-watch:
     - id: dqa2
       host: dqa2
       poll-interval: 2
+
+# Тестовый профиль (@QuarkusTest): без Quinoa (не звать npm/vite) и все bootstrap-хосты
+# disabled → SourceManager не поднимает реальные ssh/bash-источники. (state-file не
+# переопределяем: ключ herdr-watch.* вне @ConfigMapping ломает строгую валидацию.)
+"%test":
+  quarkus:
+    quinoa:
+      enabled: false
+  herdr-watch:
+    hosts:
+      - { id: local,    host: local,    enabled: false }
+      - { id: m3-local, host: m3-local, enabled: false }
+      - { id: dqa1,     host: dqa1,     enabled: false }
+      - { id: dqa2,     host: dqa2,     enabled: false }

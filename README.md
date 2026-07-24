@@ -209,6 +209,7 @@ SSH, so it reads the herdr session of the user who launched herdr-watch.
 | `POST` | `/api/servers` | Add a host, connect it if enabled. |
 | `PUT` | `/api/servers/{id}` | Edit a host (stop + start with new params). |
 | `DELETE` | `/api/servers/{id}` | Remove a host, disconnect it, drop its card. |
+| `GET` | `/q/health` | Health check (`/q/health/live`, `/q/health/ready`); readiness includes a fleet summary. |
 
 Validation errors come back as `400` with field-level messages in the
 interface's own voice, e.g.:
@@ -299,6 +300,9 @@ herdr-watch/
 
 - `cd frontend && npm run build` type-checks (`tsc`) and produces a production
   bundle; `npm run typecheck` runs the type-check alone.
+- **Tests:** backend `cd backend && ./mvnw test` (JUnit + `@QuarkusTest`; the `test`
+  profile disables Quinoa and all bootstrap hosts, so no ssh/herdr is spawned).
+  Frontend `cd frontend && npm test` (Vitest + Testing Library). Both run in CI.
 - The frontend is driven entirely by SSE + REST — no hardcoded data.
 - Keep the Source abstraction and the one-ssh-connection-per-host model intact;
   a realtime source would slot in behind the same interface.

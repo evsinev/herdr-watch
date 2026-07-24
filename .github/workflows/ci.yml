@@ -34,8 +34,15 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      - name: Frontend — typecheck + unit tests (Vitest)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
       # `mvnw verify` triggers the Quinoa build (npm install + `tsc --noEmit` + vite build)
-      # during Quarkus augmentation, so the TypeScript type-check is part of this gate.
-      - name: Verify (backend compile + frontend build + typecheck)
+      # during augmentation, and runs the backend tests (JUnit + @QuarkusTest, %test profile).
+      - name: Verify (backend tests + compile + frontend build)
         working-directory: backend
         run: ./mvnw -B --no-transfer-progress verify
