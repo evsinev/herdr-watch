@@ -28,6 +28,8 @@ function bestColumns(n: number, w: number, h: number, gap: number): number {
   return best;
 }
 
+const clamp = (min: number, v: number, max: number) => Math.max(min, Math.min(max, v));
+
 /**
  * Compact — «плоский» экран для маленьких дисплеев (~7"): сетка одинаковых
  * карточек, по одной на агента. Статус передаётся ТОЛЬКО цветом (фон 10%,
@@ -61,6 +63,19 @@ export function CompactView({
   const fill = isFullscreen && cards.length > 0 && size.w > 0 && size.h > 0;
   const cols = fill ? bestColumns(cards.length, size.w, size.h, GAP) : 0;
   const rows = cols ? Math.ceil(cards.length / cols) : 0;
+
+  // In fullscreen, scale card text to the cell size (smaller side drives it, so text fits).
+  let nameSize = 0;
+  let hostSize = 0;
+  let taskSize = 0;
+  if (fill) {
+    const cellW = (size.w - GAP * (cols - 1)) / cols;
+    const cellH = (size.h - GAP * (rows - 1)) / rows;
+    const unit = Math.min(cellW, cellH);
+    nameSize = clamp(18, Math.round(unit * 0.16), 56);
+    hostSize = clamp(11, Math.round(nameSize * 0.42), 22);
+    taskSize = clamp(11, Math.round(nameSize * 0.5), 28);
+  }
 
   return (
     <div
@@ -128,15 +143,23 @@ export function CompactView({
                   opacity: c.opacity,
                 }}
               >
-                <span className="shrink-0 font-mono text-[12px] text-muted">{c.host}</span>
+                <span
+                  className="shrink-0 font-mono text-[12px] text-muted"
+                  style={fill ? { fontSize: hostSize } : undefined}
+                >
+                  {c.host}
+                </span>
                 <span
                   className="break-all font-mono text-[16px] font-bold leading-[1.3] line-clamp-3"
-                  style={{ color: c.color }}
+                  style={fill ? { color: c.color, fontSize: nameSize } : { color: c.color }}
                 >
                   {name}
                 </span>
                 {showTask && (
-                  <span className="break-all font-mono text-[12px] leading-tight text-muted line-clamp-1">
+                  <span
+                    className="break-all font-mono text-[12px] leading-tight text-muted line-clamp-1"
+                    style={fill ? { fontSize: taskSize } : undefined}
+                  >
                     {c.task}
                   </span>
                 )}
