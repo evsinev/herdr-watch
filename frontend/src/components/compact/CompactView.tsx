@@ -1,7 +1,9 @@
+import { Maximize, Minimize } from "lucide-react";
 import type { HostState } from "@/lib/types";
 import type { CompactLabel } from "@/lib/prefs";
 import { compactCards } from "@/lib/sort";
 import { hex } from "@/lib/theme";
+import { useFullscreen } from "@/hooks/useFullscreen";
 
 /**
  * Compact — «плоский» экран для маленьких дисплеев (~7"): сетка одинаковых
@@ -17,9 +19,34 @@ export function CompactView({
   label: CompactLabel;
 }) {
   const cards = compactCards([...hosts.values()]);
+  const { isSupported, isFullscreen, toggle } = useFullscreen();
 
   return (
     <div className="mx-auto max-w-[1400px] px-[18px] pb-12 pt-[18px]">
+      <div className="mb-3 flex justify-end">
+        {isSupported ? (
+          <button
+            onClick={toggle}
+            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            className="flex items-center gap-1.5 rounded-md border border-line px-2 py-1 font-sans text-[12px] text-muted transition-colors hover:text-ink-2"
+          >
+            {isFullscreen ? (
+              <Minimize className="h-3.5 w-3.5" />
+            ) : (
+              <Maximize className="h-3.5 w-3.5" />
+            )}
+            {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          </button>
+        ) : (
+          <span
+            className="font-mono text-[11px] text-muted-2"
+            title="This browser or page context doesn't allow the Fullscreen API"
+          >
+            Fullscreen unavailable
+          </span>
+        )}
+      </div>
       <div
         className="grid gap-[14px]"
         style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}

@@ -15,6 +15,12 @@ body,
   height: 100%;
 }
 
+/* Fullscreen (from the Compact view) hides the app header for a clean glance display;
+   the Compact toolbar with its Exit button stays. */
+html:fullscreen header {
+  display: none;
+}
+
 body {
   margin: 0;
   background: #0b0d10;
