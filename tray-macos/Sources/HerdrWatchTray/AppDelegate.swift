@@ -19,6 +19,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.render()
             })
         sse.start()
+
+        // After waking from sleep the old SSE socket is dead; force a fresh reconnect
+        // instead of waiting for the stale connection to time out.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(onWake), name: NSWorkspace.didWakeNotification, object: nil)
+    }
+
+    @objc private func onWake() {
+        sse.start()
     }
 
     // MARK: - SSE

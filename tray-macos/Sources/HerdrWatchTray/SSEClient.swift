@@ -10,14 +10,6 @@ final class SSEClient {
     private let onConnected: (Bool) -> Void
     private var task: Task<Void, Never>?
 
-    private lazy var session: URLSession = {
-        let cfg = URLSessionConfiguration.default
-        cfg.timeoutIntervalForRequest = 3600
-        cfg.timeoutIntervalForResource = 86_400
-        cfg.waitsForConnectivity = true
-        return URLSession(configuration: cfg)
-    }()
-
     init(url: @escaping () -> URL?,
          onEvent: @escaping (StreamEvent) -> Void,
          onConnected: @escaping (Bool) -> Void) {
@@ -62,6 +54,16 @@ final class SSEClient {
     }
 
     private func connect(_ base: URL) async throws {
+        // Fresh ephemeral session per attempt: no shared connection pool, so a socket
+        // that died during sleep is never reused (which otherwise hangs the reconnect
+        // until the request timeout). Closed via defer when the stream ends/throws.
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest = 60          // backstop: a hung socket fails in ~60s, not an hour
+        cfg.timeoutIntervalForResource = 86_400
+        cfg.waitsForConnectivity = true
+        let session = URLSession(configuration: cfg)
+        defer { session.invalidateAndCancel() }
+
         var req = URLRequest(url: base.appendingPathComponent("api/stream"))
         req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
