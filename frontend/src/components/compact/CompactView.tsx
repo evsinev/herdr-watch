@@ -1,15 +1,38 @@
+import { useEffect, useRef, useState } from "react";
 import { Maximize, Minimize } from "lucide-react";
 import type { HostState } from "@/lib/types";
 import type { CompactLabel } from "@/lib/prefs";
 import { compactCards } from "@/lib/sort";
 import { hex } from "@/lib/theme";
+import { cn } from "@/lib/utils";
 import { useFullscreen } from "@/hooks/useFullscreen";
+
+const GAP = 14;
+
+/** Column count that makes N equal cells as large as possible in a w×h area. */
+function bestColumns(n: number, w: number, h: number, gap: number): number {
+  if (n <= 1) return 1;
+  let best = 1;
+  let bestScore = -1;
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols);
+    const cellW = (w - gap * (cols - 1)) / cols;
+    const cellH = (h - gap * (rows - 1)) / rows;
+    if (cellW <= 0 || cellH <= 0) continue;
+    const score = Math.min(cellW, cellH); // maximize the smaller side → big, ~square, equal cells
+    if (score > bestScore) {
+      bestScore = score;
+      best = cols;
+    }
+  }
+  return best;
+}
 
 /**
  * Compact — «плоский» экран для маленьких дисплеев (~7"): сетка одинаковых
  * карточек, по одной на агента. Статус передаётся ТОЛЬКО цветом (фон 10%,
- * рамка 28%, имя — полный цвет). Read-only. Что показывать крупным (проект/
- * задача/оба) задаётся настройкой `label`. Данные — те же, что у Monitor.
+ * рамка 28%, имя — полный цвет). Read-only. В фуллскрине сетка растягивается на
+ * весь экран (cols×rows под число карточек). Данные — те же, что у Monitor.
  */
 export function CompactView({
   hosts,
@@ -21,9 +44,33 @@ export function CompactView({
   const cards = compactCards([...hosts.values()]);
   const { isSupported, isFullscreen, toggle } = useFullscreen();
 
+  // Measure the grid area so we can tile all cards across the full screen in fullscreen.
+  const gridRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const r = entry.contentRect;
+      setSize({ w: r.width, h: r.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const fill = isFullscreen && cards.length > 0 && size.w > 0 && size.h > 0;
+  const cols = fill ? bestColumns(cards.length, size.w, size.h, GAP) : 0;
+  const rows = cols ? Math.ceil(cards.length / cols) : 0;
+
   return (
-    <div className="mx-auto max-w-[1400px] px-[18px] pb-12 pt-[18px]">
-      <div className="mb-3 flex justify-end">
+    <div
+      className={cn(
+        isFullscreen
+          ? "flex h-screen flex-col px-[18px] pb-[18px] pt-[18px]"
+          : "mx-auto max-w-[1400px] px-[18px] pb-12 pt-[18px]",
+      )}
+    >
+      <div className="mb-3 flex shrink-0 justify-end">
         {isSupported ? (
           <button
             onClick={toggle}
@@ -48,8 +95,16 @@ export function CompactView({
         )}
       </div>
       <div
-        className="grid gap-[14px]"
-        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }}
+        ref={gridRef}
+        className={cn("grid gap-[14px]", isFullscreen && "min-h-0 flex-1")}
+        style={
+          fill
+            ? {
+                gridTemplateColumns: `repeat(${cols}, 1fr)`,
+                gridTemplateRows: `repeat(${rows}, 1fr)`,
+              }
+            : { gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }
+        }
       >
         {cards.length === 0 ? (
           <div className="col-span-full py-24 text-center font-mono text-[13px] text-muted-2">
@@ -62,7 +117,10 @@ export function CompactView({
             return (
               <div
                 key={c.key}
-                className="flex h-32 flex-col gap-2 overflow-hidden rounded-[10px]"
+                className={cn(
+                  "flex flex-col gap-2 overflow-hidden rounded-[10px]",
+                  isFullscreen ? "h-full min-h-0" : "h-32",
+                )}
                 style={{
                   padding: "14px 16px",
                   background: hex(c.color, 0.1),
