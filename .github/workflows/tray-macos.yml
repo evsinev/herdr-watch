@@ -34,3 +34,10 @@ jobs:
       - name: Assemble .app
         working-directory: tray-macos
         run: bash scripts/make-app.sh
+
+      - name: Upload .app (downloadable, unsigned)
+        uses: actions/upload-artifact@v7
+        with:
+          name: HerdrWatchTray-app
+          path: tray-macos/HerdrWatchTray.app
+          if-no-files-found: error
