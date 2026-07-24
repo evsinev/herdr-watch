@@ -16,7 +16,7 @@ final class FleetStore {
 
     struct Transition {
         let host: String
-        let title: String
+        let project: String
         let from: String?
         let to: String
     }
@@ -24,6 +24,17 @@ final class FleetStore {
     private static func agentKey(_ a: Agent) -> String {
         if let pane = a.paneId, !pane.isEmpty { return pane }
         return (a.workspaceId ?? "") + "/" + (a.title ?? "")
+    }
+
+    /// Project name for an agent = its workspace label (or workspace id) — NOT the
+    /// worktree / terminal title. Falls back to the title only if no workspace matches.
+    static func projectLabel(_ a: Agent, in host: HostState) -> String {
+        if let wid = a.workspaceId,
+           let ws = (host.workspaces ?? []).first(where: { $0.id == wid }) {
+            if let label = ws.label, !label.trimmingCharacters(in: .whitespaces).isEmpty { return label }
+            if let id = ws.id, !id.isEmpty { return id }
+        }
+        return a.title ?? a.paneId ?? "—"
     }
 
     /// Applies a single-host update and returns the agent status transitions vs the host's
@@ -41,7 +52,7 @@ final class FleetStore {
             guard let old = prevStatus[Self.agentKey(a)] else { continue }  // new agent → not a transition
             let to = a.status ?? "unknown"
             if old != to {
-                out.append(Transition(host: host.id, title: a.title ?? a.paneId ?? "—", from: old, to: to))
+                out.append(Transition(host: host.id, project: Self.projectLabel(a, in: host), from: old, to: to))
             }
         }
         return out
@@ -75,24 +86,23 @@ final class FleetStore {
 
     struct Row {
         let host: String
-        let title: String
+        let project: String
         let status: String
         let color: NSColor
         let dim: Bool
         let prio: Int
     }
 
-    /// One row per agent, sorted like the Compact view: priority desc, host asc, title asc.
+    /// One row per agent, sorted like the Compact view: priority desc, host asc, project asc.
     func rows() -> [Row] {
         var out: [Row] = []
         for host in hosts.values {
             let dim = (host.health ?? "").uppercased() == "UNREACHABLE"
             for agent in host.agents ?? [] {
                 let status = agent.status ?? "unknown"
-                let title = agent.title ?? agent.paneId ?? "—"
                 out.append(Row(
                     host: host.id,
-                    title: title,
+                    project: Self.projectLabel(agent, in: host),
                     status: status,
                     color: AgentStatus.color(status),
                     dim: dim,
@@ -102,7 +112,7 @@ final class FleetStore {
         out.sort { lhs, rhs in
             if lhs.prio != rhs.prio { return lhs.prio > rhs.prio }
             if lhs.host != rhs.host { return lhs.host < rhs.host }
-            return lhs.title < rhs.title
+            return lhs.project < rhs.project
         }
         return out
     }

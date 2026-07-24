@@ -39,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func notify(_ t: FleetStore.Transition) {
-        let title = "\(t.host) · \(t.title)"
+        let title = "\(t.host) · \(t.project)"
         let body: String
         let sound: Bool
         switch t.to.lowercased() {
@@ -89,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 addInfo(menu, "No agents")
             } else {
                 for row in rows {
-                    let text = "\(row.host)   \(row.title)   [\(row.status)]"
+                    let text = "\(row.host)   \(row.project)   [\(row.status)]"
                     let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
                     item.isEnabled = false
                     item.image = AgentStatus.dot(row.color)
