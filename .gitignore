@@ -7,6 +7,8 @@ backend/target/
 frontend/node_modules/
 frontend/dist/
 docker/quarkus-app/
+tray-macos/.build/
+tray-macos/*.app/
 
 # misc
 **/.DS_Store

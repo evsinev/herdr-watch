@@ -1,0 +1,36 @@
+name: Tray (macOS)
+
+# Build the native menu-bar tray app on a macOS runner (full Xcode toolchain).
+# Path-filtered so it only runs when the tray or this workflow changes.
+
+on:
+  push:
+    paths:
+      - 'tray-macos/**'
+      - '.github/workflows/tray-macos.yml'
+  pull_request:
+    paths:
+      - 'tray-macos/**'
+  workflow_dispatch:
+
+concurrency:
+  group: tray-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: swift build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build (release)
+        working-directory: tray-macos
+        run: swift build -c release
+
+      - name: Assemble .app
+        working-directory: tray-macos
+        run: bash scripts/make-app.sh
