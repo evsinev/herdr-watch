@@ -1,0 +1,12 @@
+# Runtime-only image for the herdr-watch fat-jar.
+# The jar is built beforehand in the `fatjar` CI job and copied into this build
+# context as `herdr-watch-runner.jar` — no Maven/Node runs inside the image.
+# Bytecode is arch-independent, so the same jar works on every platform; buildx
+# just varies the temurin base per architecture (amd64/arm64).
+FROM eclipse-temurin:21-jre
+
+WORKDIR /app
+COPY herdr-watch-runner.jar /app/app.jar
+
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
