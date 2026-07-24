@@ -66,6 +66,62 @@ bar appears across the top on every screen, and the last-known data stays visibl
 
 ---
 
+## Install (download from Releases)
+
+The easy way — no building, no developer tools. Grab a ready-made file from the
+[**Releases page**](https://github.com/evsinev/herdr-watch/releases/latest). (The numbers
+in a file name, like `v0.0.4`, are just the version.)
+
+### 1. The dashboard (the web app)
+
+Download the one file that matches your computer:
+
+| Your computer | File to download |
+|---|---|
+| **Mac** (Apple Silicon / M1–M4) | `herdr-watch-<version>-macos-arm64` |
+| **Windows** | `herdr-watch-<version>-windows-amd64.exe` |
+| **Linux** | `herdr-watch-<version>-linux-amd64` |
+
+Then start it:
+
+- **Mac** — open the **Terminal** app, drag the downloaded file into the window, press
+  **Enter**. The first time, macOS may say it *“cannot verify the developer”*: open
+  **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**, then
+  try again. (The app just isn't code-signed.)
+- **Windows** — double-click the `.exe`. If a blue **“Windows protected your PC”** box
+  appears, click **More info → Run anyway** (again, it's just unsigned).
+- **Linux** — in a terminal: `chmod +x herdr-watch-*-linux-amd64` then
+  `./herdr-watch-*-linux-amd64`.
+
+Leave that window open and go to **http://localhost:8080** in your browser.
+
+### 2. The menu-bar app (Mac only, optional)
+
+A small icon in the top menu bar that shows your fleet at a glance and pops up a
+notification when an agent needs input or finishes.
+
+1. Download `herdr-watch-tray-<version>-macos-arm64.zip` and double-click it to unzip.
+2. **Right-click** `HerdrWatchTray.app` → **Open** (needed the first time — it's unsigned).
+3. Click **Allow** when it asks about notifications.
+
+---
+
+## After installing — what to do
+
+1. Open **http://localhost:8080** — you'll see the dashboard (empty at first).
+2. Go to **Settings** and add the servers you want to watch: an **id** (any name you
+   like) and the **ssh host** (a name from your `~/.ssh/config`, or `user@host`). Each
+   server needs `herdr` + `jq` installed and passwordless SSH — see
+   [Remote host requirements](#remote-host-requirements).
+3. Use the top menu to switch between **Monitor** (full view), **Compact** (big
+   glance screen), and **Settings**.
+4. **Menu-bar app:** click its icon → **Settings…**, set the server address (default
+   `http://localhost:8080`), and optionally turn on **Launch at Login**.
+
+> Want to build from source or run in Docker instead? See **Prerequisites** and **Run it** below.
+
+---
+
 ## Prerequisites
 
 | | Version | Notes |
