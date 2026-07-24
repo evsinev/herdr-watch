@@ -65,22 +65,32 @@ final class SSEClient {
         var req = URLRequest(url: base.appendingPathComponent("api/stream"))
         req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
+        Diag.log("connecting: \(req.url?.absoluteString ?? "?")")
         let (bytes, response) = try await session.bytes(for: req)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            Diag.log("bad response: \(response)")
             throw URLError(.badServerResponse)
         }
+        Diag.log("connected HTTP \(http.statusCode)")
         await MainActor.run { self.onConnected(true) }
 
         var dataBuffer = ""
-        for try await line in bytes.lines {
+        for try await rawLine in bytes.lines {
             if Task.isCancelled { throw CancellationError() }
+            // AsyncLineSequence usually strips terminators, but strip a stray CR defensively
+            let line = rawLine.hasSuffix("\r") ? String(rawLine.dropLast()) : rawLine
+            Diag.log("line[\(line.count)]: \(line.prefix(80))")
             if line.isEmpty {
                 // end of one SSE frame
                 let json = dataBuffer
                 dataBuffer = ""
-                if !json.isEmpty, let raw = json.data(using: .utf8),
-                   let event = try? JSONDecoder().decode(StreamEvent.self, from: raw) {
+                guard !json.isEmpty, let raw = json.data(using: .utf8) else { continue }
+                do {
+                    let event = try JSONDecoder().decode(StreamEvent.self, from: raw)
                     await MainActor.run { self.onEvent(event) }
+                } catch {
+                    Diag.log("DECODE FAIL: \(error)")
+                    Diag.log("json head: \(json.prefix(200))")
                 }
             } else if line.hasPrefix("data:") {
                 var value = String(line.dropFirst("data:".count))
