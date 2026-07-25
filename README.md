@@ -122,6 +122,14 @@ notification when an agent needs input or finishes.
 
 ---
 
+## Kiosk display
+
+The **Compact** view is meant for a wall-mounted panel. On a Raspberry Pi, skip the
+desktop browser: `cog` (WPE WebKit straight on DRM/KMS) drops the same dashboard
+from load average 1.64 to 0.11 and from 555 MiB to ~300 MiB on a Pi 3.
+See [docs/raspberry-pi-kiosk.md](docs/raspberry-pi-kiosk.md).
+
+
 ## Prerequisites
 
 | | Version | Notes |
