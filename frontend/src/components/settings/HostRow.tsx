@@ -22,13 +22,20 @@ export function HostRow({ server: s, cols, onEdit, onRemove, onToggle }: Props) 
       style={{ gridTemplateColumns: cols, opacity: s.enabled ? 1 : 0.55 }}
     >
       <span className="truncate font-mono text-[13px] text-ink">{s.id}</span>
-      {s.local ? (
-        <span className="justify-self-start rounded-[4px] border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-[10.5px] text-accent">
-          local
-        </span>
-      ) : (
-        <span className="truncate font-mono text-[12px] text-ink-3">{s.host}</span>
-      )}
+      <span className="flex min-w-0 items-center gap-1.5">
+        {s.local ? (
+          <span className="shrink-0 rounded-[4px] border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-mono text-[10.5px] text-accent">
+            local
+          </span>
+        ) : (
+          <span className="truncate font-mono text-[12px] text-ink-3">{s.host}</span>
+        )}
+        {s.dataSource === "socket" && (
+          <span className="shrink-0 rounded-[4px] border border-line-strong bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10.5px] text-muted">
+            socket
+          </span>
+        )}
+      </span>
       <span className="truncate font-mono text-[12px] text-muted">{s.herdrPath}</span>
       <span className="font-mono text-[12px] text-ink-3">{s.pollInterval}s</span>
       <span className="font-mono text-[12px] text-ink-3">{s.reconnectDelay}s</span>

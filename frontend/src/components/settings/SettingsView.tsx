@@ -67,6 +67,8 @@ export function SettingsView({
         enabled,
         sshExtraOpts: s.sshExtraOpts,
         local: s.local,
+        dataSource: s.dataSource,
+        socketPath: s.socketPath,
       });
     } finally {
       await refetch();

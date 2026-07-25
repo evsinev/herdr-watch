@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ApiError, createServer, updateServer } from "@/lib/api";
-import type { HostRequest, ServerView } from "@/lib/types";
+import type { DataSourceMode, HostRequest, ServerView } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -28,6 +28,8 @@ interface FormState {
   reconnect: string;
   enabled: boolean;
   local: boolean;
+  dataSource: DataSourceMode;
+  socketPath: string;
 }
 
 const DEFAULTS: FormState = {
@@ -38,6 +40,8 @@ const DEFAULTS: FormState = {
   reconnect: "5",
   enabled: true,
   local: false,
+  dataSource: "command",
+  socketPath: "",
 };
 
 export function HostFormModal({ open, onOpenChange, editing, onSaved }: Props) {
@@ -57,6 +61,8 @@ export function HostFormModal({ open, onOpenChange, editing, onSaved }: Props) {
         reconnect: String(editing.reconnectDelay),
         enabled: editing.enabled,
         local: editing.local,
+        dataSource: editing.dataSource,
+        socketPath: editing.socketPath ?? "",
       });
     } else {
       setForm(DEFAULTS);
@@ -91,6 +97,9 @@ export function HostFormModal({ open, onOpenChange, editing, onSaved }: Props) {
       reconnectDelay: Number(form.reconnect),
       enabled: form.enabled,
       local: form.local,
+      dataSource: form.dataSource,
+      socketPath:
+        form.dataSource === "socket" ? form.socketPath.trim() || null : null,
     };
     try {
       if (editing) await updateServer(editing.id, req);
@@ -137,6 +146,17 @@ export function HostFormModal({ open, onOpenChange, editing, onSaved }: Props) {
               </span>
             </label>
 
+            <Field label="data source" hint="how to read herdr on this host">
+              <select
+                value={form.dataSource}
+                onChange={(e) => set({ dataSource: e.target.value as DataSourceMode })}
+                className="h-9 w-full rounded-md border border-line-strong bg-field px-3 font-mono text-[13px] text-ink transition-colors focus-visible:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+              >
+                <option value="command">command — spawn herdr CLI (bash/ssh + jq)</option>
+                <option value="socket">socket — connect to herdr's unix socket directly</option>
+              </select>
+            </Field>
+
             <Field
               label="host"
               hint={form.local ? "not used for a local host" : "ssh alias or user@host"}
@@ -151,13 +171,30 @@ export function HostFormModal({ open, onOpenChange, editing, onSaved }: Props) {
               />
             </Field>
 
-            <Field label="herdr-path" hint="path to herdr on the remote">
-              <Input
-                value={form.herdrPath}
-                placeholder="herdr"
-                onChange={(e) => set({ herdrPath: e.target.value })}
-              />
-            </Field>
+            {form.dataSource === "command" ? (
+              <Field label="herdr-path" hint="path to herdr on the host">
+                <Input
+                  value={form.herdrPath}
+                  placeholder="herdr"
+                  onChange={(e) => set({ herdrPath: e.target.value })}
+                />
+              </Field>
+            ) : (
+              <Field
+                label="socket path"
+                hint={
+                  form.local
+                    ? "blank → ~/.config/herdr/herdr.sock"
+                    : "herdr.sock path on the remote host"
+                }
+              >
+                <Input
+                  value={form.socketPath}
+                  placeholder="~/.config/herdr/herdr.sock"
+                  onChange={(e) => set({ socketPath: e.target.value })}
+                />
+              </Field>
+            )}
 
             <div className="flex gap-3">
               <Field className="flex-1" label="poll interval (s)" error={errors.poll}>

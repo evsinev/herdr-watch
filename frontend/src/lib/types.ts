@@ -50,6 +50,8 @@ export type StreamEvent =
   | { type: "host_remove"; data: { id: string } };
 
 // Settings / CRUD.
+export type DataSourceMode = "command" | "socket"; // CLI herdr vs прямой unix-сокет
+
 export interface ServerView {
   id: string;
   host: string;
@@ -59,6 +61,8 @@ export interface ServerView {
   enabled: boolean;
   sshExtraOpts: string | null;
   local: boolean;
+  dataSource: DataSourceMode;
+  socketPath: string | null;
   health: Health;
   lastUpdate: number | null;
 }
@@ -72,6 +76,8 @@ export interface HostRequest {
   enabled: boolean;
   sshExtraOpts?: string | null;
   local: boolean;
+  dataSource?: DataSourceMode;
+  socketPath?: string | null;
 }
 
 export interface ApiErrors {
