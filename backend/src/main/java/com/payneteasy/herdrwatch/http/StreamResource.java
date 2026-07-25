@@ -5,6 +5,8 @@ import com.payneteasy.herdrwatch.model.Model.StreamEvent;
 
 import io.smallrye.mutiny.Multi;
 import jakarta.inject.Inject;
+
+import java.time.Duration;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
@@ -37,9 +39,20 @@ public class StreamResource {
         // onOverflow().drop(): медленный/отвалившийся клиент ТЕРЯЕТ кадры, а не роняет
         // broadcast с BackPressureFailure. Для живого монитора это ок — следующий
         // host_update несёт актуальное состояние.
+        //
+        // Heartbeat: раз в 15с шлём type=ping. Когда вся ферма «тихая» (все хосты
+        // UNREACHABLE/idle), host_update'ов нет — без пинга клиент с request-timeout
+        // (нативный трей) решил бы, что соединение мертво, и ложно переподключался бы.
+        // ticks холодный → у каждого SSE-клиента свой heartbeat; клиенты type=ping игнорируют.
+        Multi<StreamEvent> live = Multi.createBy().merging().streams(
+                registry.events().onOverflow().drop(),
+                Multi.createFrom().ticks().every(Duration.ofSeconds(15))
+                        .onOverflow().drop()
+                        .map(tick -> new StreamEvent("ping", null))
+        );
         return Multi.createBy().concatenating().streams(
                 Multi.createFrom().item(snapshot),
-                registry.events().onOverflow().drop()
+                live
         );
     }
 }

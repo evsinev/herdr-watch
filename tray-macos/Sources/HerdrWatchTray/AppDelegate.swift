@@ -34,6 +34,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func handle(_ event: StreamEvent) {
         switch event.payload {
+        case .ping:
+            return   // heartbeat — keeps the socket warm; no state change, no re-render
         case .snapshot(let list):
             store.applySnapshot(list)
         case .update(let host):

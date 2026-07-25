@@ -51,6 +51,7 @@ struct StreamEvent: Decodable {
         case snapshot([HostState])   // whole fleet
         case update(HostState)       // one host
         case remove(String)          // host id
+        case ping                    // keepalive — no data, ignored
     }
     let payload: Payload
 
@@ -67,6 +68,10 @@ struct StreamEvent: Decodable {
         case "host_remove":
             let holder = try c.decode([String: String].self, forKey: .data)
             payload = .remove(holder["id"] ?? "")
+        case "ping":
+            // Heartbeat from the server (data is null). MUST decode successfully so the
+            // eager-decode buffer in SSEClient clears; a thrown error would poison it.
+            payload = .ping
         default:
             throw DecodingError.dataCorruptedError(
                 forKey: .type, in: c, debugDescription: "unknown stream event type: \(type)")

@@ -87,7 +87,7 @@ public final class Model {
 
     /** Событие, рассылаемое в SSE. */
     public record StreamEvent(
-            String type,        // "snapshot" | "host_update"
-            Object data
+            String type,        // "snapshot" | "host_update" | "host_remove" | "ping"
+            Object data         // null для ping (heartbeat)
     ) {}
 }
