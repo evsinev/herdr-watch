@@ -15,9 +15,9 @@ body,
   height: 100%;
 }
 
-/* Fullscreen (from the Compact view) hides the app header for a clean glance display;
-   the Compact toolbar with its Exit button stays. Exception: while offline, keep the
-   header visible so its "backend disconnected — reconnecting…" banner is still shown. */
+/* Real browser fullscreen (the Compact "Fullscreen" button) hides the app header for a
+   clean glance display. The /compact/full route hides it in React instead (App.tsx).
+   Exception: while offline, keep the header so its "disconnected" banner shows. */
 html:fullscreen:not([data-offline]) header {
   display: none;
 }

@@ -9,7 +9,12 @@ import { loadCompactLabel, saveCompactLabel } from "@/lib/prefs";
 export type View = "monitor" | "compact" | "settings";
 
 export default function App() {
-  const [view, setView] = useState<View>("monitor");
+  // /compact/full → open Compact and render it fullscreen-style right away.
+  const initialFull =
+    typeof window !== "undefined" &&
+    window.location.pathname.replace(/\/+$/, "") === "/compact/full";
+  const [view, setView] = useState<View>(initialFull ? "compact" : "monitor");
+  const [forceFull, setForceFull] = useState(initialFull);
   const [compactLabel, setCompactLabel] = useState(loadCompactLabel);
   const { hosts, connected } = useSse();
 
@@ -32,12 +37,32 @@ export default function App() {
     document.documentElement.toggleAttribute("data-offline", offline);
   }, [offline]);
 
+  const onView = (v: View) => {
+    setForceFull(false);
+    setView(v);
+  };
+  const exitFull = () => {
+    setForceFull(false);
+    if (window.location.pathname !== "/") history.replaceState(null, "", "/");
+  };
+
+  // In forced-fullscreen (/compact/full) don't render the header at all — a clean board.
+  // Exception: when offline, show it so its "disconnected" banner is visible.
+  const showHeader = !forceFull || offline;
+
   return (
     <div className="min-h-screen bg-page text-ink">
-      <Header view={view} onView={setView} hosts={hosts} offline={offline} />
+      {showHeader && <Header view={view} onView={onView} hosts={hosts} offline={offline} />}
       <main>
         {view === "monitor" && <MonitorView hosts={hosts} />}
-        {view === "compact" && <CompactView hosts={hosts} label={compactLabel} />}
+        {view === "compact" && (
+          <CompactView
+            hosts={hosts}
+            label={compactLabel}
+            forceFull={forceFull}
+            onExitFull={exitFull}
+          />
+        )}
         {view === "settings" && (
           <SettingsView compactLabel={compactLabel} onCompactLabel={setCompactLabel} />
         )}

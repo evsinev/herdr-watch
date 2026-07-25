@@ -32,21 +32,26 @@ const clamp = (min: number, v: number, max: number) => Math.max(min, Math.min(ma
 
 /**
  * Compact — «плоский» экран для маленьких дисплеев (~7"): сетка одинаковых
- * карточек, по одной на агента. Статус передаётся ТОЛЬКО цветом (фон 10%,
- * рамка 28%, имя — полный цвет). Read-only. В фуллскрине сетка растягивается на
- * весь экран (cols×rows под число карточек). Данные — те же, что у Monitor.
+ * карточек, по одной на агента. Статус передаётся ТОЛЬКО цветом. В фуллскрине
+ * (реальном или `forceFull` из /compact/full) сетка растягивается на весь экран.
+ * На /compact/full тулбар скрыт (чистая доска); выход — по Esc.
  */
 export function CompactView({
   hosts,
   label,
+  forceFull = false,
+  onExitFull,
 }: {
   hosts: Map<string, HostState>;
   label: CompactLabel;
+  forceFull?: boolean;
+  onExitFull?: () => void;
 }) {
   const cards = compactCards([...hosts.values()]);
-  const { isSupported, isFullscreen, toggle } = useFullscreen();
+  const { isSupported, isFullscreen } = useFullscreen();
+  const full = isFullscreen || forceFull; // fullscreen look (real OR forced)
 
-  // Measure the grid area so we can tile all cards across the full screen in fullscreen.
+  // Measure the grid area so we can tile all cards across the full screen.
   const gridRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
@@ -60,7 +65,34 @@ export function CompactView({
     return () => ro.disconnect();
   }, []);
 
-  const fill = isFullscreen && cards.length > 0 && size.w > 0 && size.h > 0;
+  // On /compact/full without real fullscreen, try to enter it — immediately (works in
+  // kiosk/allowed contexts) and on the first click (browsers require a user gesture).
+  useEffect(() => {
+    if (!forceFull || !isSupported || isFullscreen) return;
+    const enter = () => void document.documentElement.requestFullscreen().catch(() => {});
+    enter();
+    window.addEventListener("pointerdown", enter, { once: true });
+    return () => window.removeEventListener("pointerdown", enter);
+  }, [forceFull, isSupported, isFullscreen]);
+
+  // /compact/full has no toolbar, so Escape is the way out of the forced view.
+  useEffect(() => {
+    if (!forceFull) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+      onExitFull?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [forceFull, onExitFull]);
+
+  function onFsButton() {
+    if (isFullscreen) void document.exitFullscreen().catch(() => {});
+    else void document.documentElement.requestFullscreen().catch(() => {});
+  }
+
+  const fill = full && cards.length > 0 && size.w > 0 && size.h > 0;
   const cols = fill ? bestColumns(cards.length, size.w, size.h, GAP) : 0;
   const rows = cols ? Math.ceil(cards.length / cols) : 0;
 
@@ -80,38 +112,36 @@ export function CompactView({
   return (
     <div
       className={cn(
-        isFullscreen
+        full
           ? "flex h-screen flex-col px-[18px] pb-[18px] pt-[18px]"
           : "mx-auto max-w-[1400px] px-[18px] pb-12 pt-[18px]",
       )}
     >
-      <div className="mb-3 flex shrink-0 justify-end">
-        {isSupported ? (
-          <button
-            onClick={toggle}
-            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-            aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-            className="flex items-center gap-1.5 rounded-md border border-line px-2 py-1 font-sans text-[12px] text-muted transition-colors hover:text-ink-2"
-          >
-            {isFullscreen ? (
-              <Minimize className="h-3.5 w-3.5" />
-            ) : (
-              <Maximize className="h-3.5 w-3.5" />
-            )}
-            {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-          </button>
-        ) : (
-          <span
-            className="font-mono text-[11px] text-muted-2"
-            title="This browser or page context doesn't allow the Fullscreen API"
-          >
-            Fullscreen unavailable
-          </span>
-        )}
-      </div>
+      {!forceFull && (
+        <div className="mb-3 flex shrink-0 justify-end">
+          {isSupported ? (
+            <button
+              onClick={onFsButton}
+              title={full ? "Exit fullscreen" : "Fullscreen"}
+              aria-label={full ? "Exit fullscreen" : "Fullscreen"}
+              className="flex items-center gap-1.5 rounded-md border border-line px-2 py-1 font-sans text-[12px] text-muted transition-colors hover:text-ink-2"
+            >
+              {full ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
+              {full ? "Exit fullscreen" : "Fullscreen"}
+            </button>
+          ) : (
+            <span
+              className="font-mono text-[11px] text-muted-2"
+              title="This browser or page context doesn't allow the Fullscreen API"
+            >
+              Fullscreen unavailable
+            </span>
+          )}
+        </div>
+      )}
       <div
         ref={gridRef}
-        className={cn("grid gap-[14px]", isFullscreen && "min-h-0 flex-1")}
+        className={cn("grid gap-[14px]", full && "min-h-0 flex-1")}
         style={
           fill
             ? {
@@ -134,7 +164,7 @@ export function CompactView({
                 key={c.key}
                 className={cn(
                   "flex flex-col gap-2 overflow-hidden rounded-[10px]",
-                  isFullscreen ? "h-full min-h-0" : "h-32",
+                  full ? "h-full min-h-0" : "h-32",
                 )}
                 style={{
                   padding: "14px 16px",
