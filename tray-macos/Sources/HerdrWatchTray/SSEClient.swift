@@ -1,9 +1,11 @@
 import Foundation
 
 // Streams the server's SSE endpoint and delivers decoded StreamEvents on the main
-// thread. Reconnects with backoff; the server re-sends a full `snapshot` on every
-// (re)connect, so no client-side resume logic is needed. There is no server heartbeat,
-// so we use a long request timeout and rely on reconnect.
+// thread. Reconnects with a short backoff; the server re-sends a full `snapshot` on every
+// (re)connect, so no client-side resume logic is needed. The server sends a `ping` heartbeat
+// every 15s, so a live-but-quiet fleet doesn't look dead; a genuinely dead socket times out
+// (~45s) and reconnects. Fresh ephemeral session per attempt + waitsForConnectivity=false so a
+// server restart is retried promptly instead of hanging.
 final class SSEClient {
     private let urlProvider: () -> URL?
     private let onEvent: (StreamEvent) -> Void
@@ -32,7 +34,7 @@ final class SSEClient {
     }
 
     private func runLoop() async {
-        var backoff: UInt64 = 2
+        var backoff: UInt64 = 1
         while !Task.isCancelled {
             guard let base = urlProvider() else {
                 try? await Task.sleep(nanoseconds: 2 * 1_000_000_000)
@@ -40,7 +42,7 @@ final class SSEClient {
             }
             do {
                 try await connect(base)
-                backoff = 2               // clean EOF → reconnect promptly
+                backoff = 1               // clean EOF → reconnect promptly
             } catch is CancellationError {
                 break
             } catch {
@@ -49,7 +51,7 @@ final class SSEClient {
             await MainActor.run { self.onConnected(false) }
             if Task.isCancelled { break }
             try? await Task.sleep(nanoseconds: backoff * 1_000_000_000)
-            backoff = min(backoff * 2, 30)
+            backoff = min(backoff * 2, 3)   // cap low: retry every ≤3s so reconnect is prompt
         }
     }
 
@@ -58,9 +60,17 @@ final class SSEClient {
         // that died during sleep is never reused (which otherwise hangs the reconnect
         // until the request timeout). Closed via defer when the stream ends/throws.
         let cfg = URLSessionConfiguration.ephemeral
-        cfg.timeoutIntervalForRequest = 60          // backstop: a hung socket fails in ~60s, not an hour
+        // The server sends a heartbeat (type=ping) every 15s, so a live connection always
+        // has bytes within this window — it never times out falsely, even when the fleet is
+        // quiet. A genuinely dead socket (sleep/network drop) delivers nothing → fails in ~45s.
+        cfg.timeoutIntervalForRequest = 45
         cfg.timeoutIntervalForResource = 86_400
-        cfg.waitsForConnectivity = true
+        // waitsForConnectivity=false: when the server is restarting, a connect gets ECONNREFUSED
+        // (loopback path is "satisfied", so it's NOT a connectivity problem). With `true`,
+        // URLSession WAITS on it instead of failing — the attempt hangs up to timeoutIntervalFor
+        // Resource (24h) and never recovers. With `false` it throws promptly and runLoop's
+        // backoff retries until the server is back (measured: reconnect ≤ ~3s for any downtime).
+        cfg.waitsForConnectivity = false
         let session = URLSession(configuration: cfg)
         defer { session.invalidateAndCancel() }
 
