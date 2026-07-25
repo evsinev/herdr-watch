@@ -4,6 +4,13 @@ quarkus:
     cors:
       ~: true
       origins: "http://localhost:5173"   # Vite dev-сервер фронта
+    # Не кешировать фронт агрессивно: по умолчанию Quinoa/Quarkus отдаёт статику с
+    # `Cache-Control: public, immutable, max-age=86400`, из-за чего kiosk-браузеры (cog)
+    # держат старый index.html сутки и не подхватывают пересборку. Отключаем дефолтный
+    # immutable-кеш → браузер ревалидирует по Last-Modified и берёт свежую страницу.
+    # Ассеты хешированы (новый билд = новый URL), так что потеря длинного кеша безвредна.
+    static-resources:
+      caching-enabled: false
   log:
     category:
       "com.payneteasy.herdrwatch":
