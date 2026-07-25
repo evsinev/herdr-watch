@@ -18,9 +18,16 @@ public record HostDef(
         int pollInterval,
         int reconnectDelay,
         boolean enabled,
-        String sshExtraOpts,  // nullable — необязательный override опций ssh
-        boolean local         // true — читать локальный herdr без ssh
+        String sshExtraOpts,     // nullable — необязательный override опций ssh
+        boolean local,           // true — читать локальный herdr без ssh
+        DataSource dataSource,   // command (CLI, дефолт) | socket (прямой unix-сокет herdr)
+        String socketPath        // nullable — путь к herdr.sock для socket-режима (иначе дефолт)
 ) {
+    /** Нормализуем: старые state-файлы без поля дадут null → трактуем как COMMAND. */
+    public HostDef {
+        if (dataSource == null) dataSource = DataSource.COMMAND;
+    }
+
     /** Собрать из bootstrap-записи application.yaml. */
     public static HostDef from(HostsConfig.Host h) {
         return new HostDef(
@@ -31,7 +38,9 @@ public record HostDef(
                 h.reconnectDelay(),
                 h.enabled(),
                 h.sshExtraOpts().orElse(null),
-                h.local()
+                h.local(),
+                h.dataSource(),
+                h.socketPath().orElse(null)
         );
     }
 }

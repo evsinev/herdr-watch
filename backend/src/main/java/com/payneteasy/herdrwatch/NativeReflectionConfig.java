@@ -1,6 +1,7 @@
 package com.payneteasy.herdrwatch;
 
 import com.payneteasy.herdrwatch.http.ServersResource;
+import com.payneteasy.herdrwatch.model.DataSource;
 import com.payneteasy.herdrwatch.model.HostDef;
 import com.payneteasy.herdrwatch.model.Model;
 
@@ -20,6 +21,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
             Model.WorktreeInfo.class,
             Model.StreamEvent.class,
             Model.Health.class,
+            DataSource.class,
             HostDef.class,
             HostStore.StateFile.class,
             ServersResource.HostRequest.class,

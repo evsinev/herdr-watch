@@ -1,5 +1,7 @@
 package com.payneteasy.herdrwatch;
 
+import com.payneteasy.herdrwatch.model.DataSource;
+
 import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;
 
@@ -45,5 +47,12 @@ public interface HostsConfig {
 
         /** Необязательный override опций ssh (иначе берутся дефолтные). */
         Optional<String> sshExtraOpts();
+
+        /** Способ получения данных: COMMAND (CLI, дефолт) или SOCKET (прямой unix-сокет herdr). */
+        @WithDefault("COMMAND")
+        DataSource dataSource();
+
+        /** Путь к herdr.sock для socket-режима (иначе HERDR_SOCKET_PATH/дефолт). */
+        Optional<String> socketPath();
     }
 }

@@ -14,7 +14,8 @@ import java.util.List;
 public class SshSource extends AbstractHerdrSource {
 
     // те же опции, что в bash-скрипте, плюс мультиплексирование соединений
-    private static final String[] SSH_BASE_OPTS = {
+    // (package-private: переиспользуется SocketDuplex.Remote для ssh+socat)
+    static final String[] SSH_BASE_OPTS = {
             "-o", "BatchMode=yes",
             "-o", "ServerAliveInterval=5",
             "-o", "ServerAliveCountMax=2",

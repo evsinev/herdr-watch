@@ -2,6 +2,7 @@ package com.payneteasy.herdrwatch.source;
 
 import com.payneteasy.herdrwatch.HostStore;
 import com.payneteasy.herdrwatch.Registry;
+import com.payneteasy.herdrwatch.model.DataSource;
 import com.payneteasy.herdrwatch.model.HostDef;
 
 import io.quarkus.runtime.ShutdownEvent;
@@ -64,13 +65,24 @@ public class SourceManager {
             return;
         }
         registry.register(host.id(), host.host());
-        Source src = host.local()
-                ? new LocalSource(host, registry)
-                : new SshSource(host, registry);
+        Source src = newSource(host);
         sources.put(host.id(), src);
         executor.submit(src);
-        log.info("started {} source for {} ({})",
-                host.local() ? "local" : "ssh", host.id(), host.host());
+        log.info("started {} source for {} ({})", label(host), host.id(), host.host());
+    }
+
+    /** Выбор реализации источника по (dataSource × local): command→Local/Ssh, socket→SocketSource. */
+    private Source newSource(HostDef host) {
+        if (host.dataSource() == DataSource.SOCKET) {
+            return new SocketSource(host, registry);
+        }
+        return host.local() ? new LocalSource(host, registry) : new SshSource(host, registry);
+    }
+
+    private static String label(HostDef host) {
+        boolean socket = host.dataSource() == DataSource.SOCKET;
+        if (host.local()) return socket ? "local-socket" : "local";
+        return socket ? "ssh-socket" : "ssh";
     }
 
     /** Остановить источник и убрать хост из состояния (карточка исчезает в UI). */

@@ -2,6 +2,7 @@ package com.payneteasy.herdrwatch.http;
 
 import com.payneteasy.herdrwatch.HostStore;
 import com.payneteasy.herdrwatch.Registry;
+import com.payneteasy.herdrwatch.model.DataSource;
 import com.payneteasy.herdrwatch.model.HostDef;
 import com.payneteasy.herdrwatch.model.Model.Health;
 import com.payneteasy.herdrwatch.model.Model.HostState;
@@ -51,7 +52,9 @@ public class ServersResource {
             Integer reconnectDelay,
             Boolean enabled,
             String sshExtraOpts,
-            Boolean local
+            Boolean local,
+            String dataSource,   // "command" | "socket" (лениво парсится, дефолт command)
+            String socketPath
     ) {}
 
     /** Выходной DTO для Settings: конфиг + живой health. */
@@ -64,6 +67,8 @@ public class ServersResource {
             boolean enabled,
             String sshExtraOpts,
             boolean local,
+            String dataSource,   // "command" | "socket"
+            String socketPath,
             String health,
             Long lastUpdate
     ) {}
@@ -135,6 +140,7 @@ public class ServersResource {
         return new ServerView(
                 d.id(), d.host(), d.herdrPath(),
                 d.pollInterval(), d.reconnectDelay(), d.enabled(), d.sshExtraOpts(), d.local(),
+                d.dataSource().name().toLowerCase(), d.socketPath(),
                 health, lastUpdate
         );
     }
@@ -146,8 +152,11 @@ public class ServersResource {
         boolean enabled = (r.enabled() == null) ? true : r.enabled();
         // для local ssh-таргет не нужен — ставим ярлык "local" для отображения
         String host = blank(r.host()) ? (local ? "local" : "") : r.host().trim();
+        DataSource dataSource = DataSource.parse(r.dataSource());
+        String socketPath = blank(r.socketPath()) ? null : r.socketPath().trim();
         return new HostDef(id, host, herdrPath,
-                r.pollInterval(), r.reconnectDelay(), enabled, sshExtra, local);
+                r.pollInterval(), r.reconnectDelay(), enabled, sshExtra, local,
+                dataSource, socketPath);
     }
 
     /** Валидация в «голосе интерфейса» — тексты совпадают с формой из макета. */
