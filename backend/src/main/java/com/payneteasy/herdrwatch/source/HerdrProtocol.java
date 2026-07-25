@@ -29,6 +29,9 @@ import java.util.List;
         HerdrProtocol.WorkspaceRec.class,
         HerdrProtocol.AgentRec.class,
         HerdrProtocol.WorktreeRec.class,
+        HerdrProtocol.Subscription.class,
+        HerdrProtocol.EventsSubscribeParams.class,
+        HerdrProtocol.AckResponse.class,
 })
 final class HerdrProtocol {
 
@@ -49,6 +52,14 @@ final class HerdrProtocol {
     record Request(String id, String method, Object params) {}
 
     record WorktreeParams(@JsonProperty("workspace_id") String workspaceId) {}
+
+    // events.subscribe: массив подписок (нам достаточно type-only подписок — они триггерят re-snapshot)
+    record EventsSubscribeParams(List<Subscription> subscriptions) {}
+
+    record Subscription(String type) {}
+
+    /** Ответ-ack на events.subscribe (result игнорируем, важны id и error). */
+    record AckResponse(String id, ErrorBody error) implements HerdrResponse {}
 
     // --- общий конверт ---
 
