@@ -43,8 +43,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * <p><b>Гибрид B «событие = триггер, snapshot = истина»:</b> держим persistent-подписку
  * {@code events.subscribe} (событий много типов, см. {@link #SUBSCRIBE_TYPES}); любое событие —
  * лишь «пинок»: троттлим ~{@value #DEBOUNCE_MS}мс и дёргаем {@code session.snapshot}
- * (+ {@code worktree.list}) → {@link Registry#applyFrame}. Плюс страховочный ре-snapshot раз в
- * {@value #RESYNC_SECONDS}с (level-triggered resync — на случай пропущенного события/после reconnect).
+ * (+ {@code worktree.list}) → {@link Registry#applyFrame}. Плюс страховочный <b>poll-floor</b>:
+ * гарантированный ре-snapshot каждые {@code pollInterval}с (level-triggered — на случай пропущенного
+ * события/после reconnect и чтобы фоновые статусы обновлялись не медленнее command-режима).
  * Дельты событий в Registry не маппим (нужны sequence/replay — вне скоупа).
  *
  * <p><b>Одно соединение = один запрос:</b> herdr закрывает сокет после ответа на one-shot методы
@@ -58,7 +59,7 @@ public class SocketSource implements Source {
     private static final Logger log = LoggerFactory.getLogger(SocketSource.class);
 
     private static final long DEBOUNCE_MS = 150;      // троттл: не чаще 1 снапшота на этот интервал
-    private static final long RESYNC_SECONDS = 30;    // страховочный ре-snapshot
+    // страховочный poll-floor берём из cfg.pollInterval() — см. startScheduler()
 
     /** Type-only подписки (не требуют pane_id) — покрывают все изменения; событие лишь триггерит re-snapshot. */
     private static final String[] SUBSCRIBE_TYPES = {
@@ -105,8 +106,8 @@ public class SocketSource implements Source {
     @Override
     public void run() {
         worker = Thread.currentThread();
-        log.info("[{}] socket source starting (subscribe) — target={}, socket={}, resync={}s, reconnect={}s",
-                cfg.id(), target(), SocketDuplex.resolveSocketPath(cfg), RESYNC_SECONDS, cfg.reconnectDelay());
+        log.info("[{}] socket source starting (subscribe) — target={}, socket={}, poll-floor={}s, reconnect={}s",
+                cfg.id(), target(), SocketDuplex.resolveSocketPath(cfg), cfg.pollInterval(), cfg.reconnectDelay());
 
         while (running) {
             try {
@@ -179,7 +180,8 @@ public class SocketSource implements Source {
         });
         scheduler = s;
         s.execute(this::fetchSnapshotSafe);   // seed немедленно
-        s.scheduleWithFixedDelay(this::fetchSnapshotSafe, RESYNC_SECONDS, RESYNC_SECONDS, TimeUnit.SECONDS);
+        long floor = cfg.pollInterval();      // страховочный poll-floor = pollInterval (события ускоряют сверху)
+        s.scheduleWithFixedDelay(this::fetchSnapshotSafe, floor, floor, TimeUnit.SECONDS);
     }
 
     private synchronized void stopScheduler() {
