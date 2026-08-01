@@ -15,14 +15,17 @@ import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Общая механика источника herdr: один долгоживущий процесс, внутри которого
- * крутится `while true; do frame; sleep N; done` (поллинг на стороне процесса),
- * локально читаем stdout построчно — каждая строка это один кадр NDJSON.
+ * крутится `while read -t D _; do frame; done` — клиент шлёт «тик» на stdin и получает
+ * ровно один кадр NDJSON в ответ (request/response). Это же делает процесс
+ * самоубивающимся: пропал клиент (обрыв сети/сон) — нет тиков — read по таймауту
+ * выходит, удалённый процесс умирает сам и не копится сиротой на хосте.
  *
  * Прямой перевод bash-скрипта herdr-watch:
  *   - битую строку игнорируем, состояние не трогаем;
@@ -96,11 +99,17 @@ public abstract class AbstractHerdrSource implements Source {
                         .start();
 
                 try (BufferedReader r = new BufferedReader(
-                        new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
+                        new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8));
+                     OutputStream tick = proc.getOutputStream()) {
                     String line;
-                    while (running && (line = r.readLine()) != null) {
-                        if (line.isBlank()) continue;
-                        handleFrame(line);
+                    while (running) {
+                        tick.write('\n');               // просим следующий кадр + доказываем, что клиент жив
+                        tick.flush();
+                        line = r.readLine();
+                        if (line == null) break;        // EOF — соединение закрыто, идём на reconnect
+                        if (!line.isBlank()) handleFrame(line);
+                        if (!running) break;
+                        sleepSeconds(cfg.pollInterval()); // темп кадров теперь задаёт клиент
                     }
                 }
                 if (running) {
@@ -137,7 +146,13 @@ public abstract class AbstractHerdrSource implements Source {
      */
     private String buildRemoteCommand() {
         String h = cfg.herdrPath();
+        // read -t <deadline>: цикл ждёт «тик» от клиента (см. run()) и выдаёт ровно один
+        // кадр на тик. Нет тика в течение deadline (клиент отвалился/уснул) или EOF на stdin —
+        // read возвращает non-zero, цикл выходит, удалённый процесс умирает сам. Так мы не
+        // копим осиротевшие frame-циклы на удалённом хосте при обрыве сети/засыпании.
+        int readTimeout = Math.max(cfg.pollInterval() * 3, 15);
         return ""
+                + ": herdr-watch-frame-loop;"   // метка для ps/pgrep (ops + scripts/reap-stale-herdr.sh)
                 + "frame() {"
                 + "  ws=\"$(" + h + " workspace list 2>/dev/null || echo null)\";"
                 + "  ag=\"$(" + h + " agent list 2>/dev/null || echo null)\";"
@@ -150,7 +165,7 @@ public abstract class AbstractHerdrSource implements Source {
                 + "  jq -c -n --argjson ws \"$ws\" --argjson ag \"$ag\" --argjson wt \"$wt\""
                 + "    '{ws:$ws,ag:$ag,wt:$wt,ts:(now|floor)}';"
                 + "};"
-                + "while true; do frame; sleep " + cfg.pollInterval() + "; done";
+                + "while read -t " + readTimeout + " _; do frame; done";
     }
 
     /** Парсим одну строку NDJSON и кладём в Registry. Битую строку молча пропускаем. */

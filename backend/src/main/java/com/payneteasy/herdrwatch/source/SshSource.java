@@ -49,7 +49,16 @@ public class SshSource extends AbstractHerdrSource {
             for (String tok : extra.trim().split("\\s+")) if (!tok.isBlank()) cmd.add(tok);
         }
         cmd.add(cfg.host());
-        cmd.add(frameCmd);
+        // Прогоняем frame-скрипт через bash явно: он использует `read -t`, а логин-шелл на
+        // удалённом хосте может быть dash (`read -t` там нет). Весь `bash -c '<скрипт>'`
+        // передаём ОДНИМ ssh-аргументом — ssh отдаёт его remote-шеллу как есть, а тот
+        // корректно разбирает одинарные кавычки и вызывает bash.
+        cmd.add("bash -c " + singleQuote(frameCmd));
         return cmd;
+    }
+
+    /** Оборачивает строку в одинарные кавычки для POSIX-шелла, экранируя внутренние `'`. */
+    static String singleQuote(String s) {
+        return "'" + s.replace("'", "'\\''") + "'";
     }
 }
