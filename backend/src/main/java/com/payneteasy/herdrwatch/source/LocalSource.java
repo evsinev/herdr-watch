@@ -24,6 +24,20 @@ public class LocalSource extends AbstractHerdrSource {
         return "local";
     }
 
+    /**
+     * COMMAND-режим локального источника завязан на `bash -lc … | jq …`, чего на Windows нет.
+     * Не спавним доомный цикл — просим переключить хост в socket-режим (data-source: SOCKET),
+     * который читает herdr напрямую через unix-сокет без bash/jq.
+     */
+    @Override
+    protected String unsupportedReason() {
+        if (IS_WINDOWS) {
+            return "local command-mode source needs bash+jq (unavailable on Windows); "
+                    + "switch this host to socket mode (data-source: SOCKET)";
+        }
+        return null;
+    }
+
     @Override
     protected String target() {
         return "local";

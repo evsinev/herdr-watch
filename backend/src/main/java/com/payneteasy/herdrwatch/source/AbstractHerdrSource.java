@@ -77,9 +77,26 @@ public abstract class AbstractHerdrSource implements Source {
         if (p != null) p.destroyForcibly();
     }
 
+    /**
+     * Причина, по которой этот источник не может работать в текущем окружении (иначе null).
+     * Возврат не-null означает «даже не пытаться»: логируем ошибку и не крутим доомный
+     * spawn-цикл. Напр. local COMMAND-режим на Windows (нет bash) — см. {@link LocalSource}.
+     */
+    protected String unsupportedReason() {
+        return null;
+    }
+
     @Override
     public void run() {
         worker = Thread.currentThread();
+
+        String unsupported = unsupportedReason();
+        if (unsupported != null) {
+            log.error("[{}] source not started — {}", cfg.id(), unsupported);
+            registry.setHealth(cfg.id(), Health.DEGRADED);
+            return;
+        }
+
         String frameCmd = buildRemoteCommand();
         log.info("[{}] source starting — target={}, herdr={}, poll={}s, reconnect={}s",
                 cfg.id(), target(), cfg.herdrPath(), cfg.pollInterval(), cfg.reconnectDelay());

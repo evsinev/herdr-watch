@@ -80,7 +80,7 @@ public interface SocketDuplex extends Closeable {
         Remote(HostDef cfg, String path) throws IOException {
             List<String> cmd = new ArrayList<>();
             cmd.add("ssh");
-            for (String o : SshSource.SSH_BASE_OPTS) cmd.add(o);
+            cmd.addAll(SshSource.sshBaseOpts());
             String extra = cfg.sshExtraOpts();
             if (extra != null && !extra.isBlank()) {
                 for (String tok : extra.trim().split("\\s+")) if (!tok.isBlank()) cmd.add(tok);

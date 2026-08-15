@@ -95,6 +95,28 @@ Then start it:
 
 Leave that window open and go to **http://localhost:8080** in your browser.
 
+#### Windows notes
+
+herdr-watch reads a **local** herdr on Windows through herdr's **socket API** (no `bash`
+or `jq` needed) — the shipped default host `local` is already set to `data-source: SOCKET`.
+A few Windows-specific things:
+
+- **Runtime:** the socket transport uses Java's `AF_UNIX` sockets. This is fully supported
+  by a **JRE 21 on Windows 10/11**, so the most reliable option is the **fat-jar**:
+  `java -jar herdr-watch-<version>.jar`. If the native `.exe` exits right after start, use
+  the jar instead. (`AF_UNIX` in the GraalVM *native* image on Windows is not yet verified.)
+- **Socket path:** the local host expects herdr's socket at
+  `C:\Users\<you>\.config\herdr\herdr.sock`. If your herdr uses a different location, set it
+  per-host in **Settings** (`socketPath`) or via the `HERDR_SOCKET_PATH` environment
+  variable. If the socket isn't found, the host shows **degraded** (grey) — the app keeps
+  running; it won't exit.
+- **SSH hosts:** connection multiplexing (`ControlMaster`) is skipped automatically on
+  Windows, since Windows OpenSSH doesn't implement it.
+
+> If herdr on Windows exposes its API over a **named pipe** or **TCP** instead of a unix
+> socket file, the socket source can't reach it yet — please open an issue with the
+> transport/path so it can be supported.
+
 ### 2. The menu-bar app (Mac only, optional)
 
 A small icon in the top menu bar that shows your fleet at a glance and pops up a
