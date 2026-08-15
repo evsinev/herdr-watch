@@ -4,6 +4,14 @@ import com.payneteasy.herdrwatch.http.ServersResource;
 import com.payneteasy.herdrwatch.model.DataSource;
 import com.payneteasy.herdrwatch.model.HostDef;
 import com.payneteasy.herdrwatch.model.Model;
+import com.payneteasy.herdrwatch.snapshot.SnapshotAgent;
+import com.payneteasy.herdrwatch.snapshot.SnapshotAgentCompact;
+import com.payneteasy.herdrwatch.snapshot.SnapshotAgentStatus;
+import com.payneteasy.herdrwatch.snapshot.SnapshotError;
+import com.payneteasy.herdrwatch.snapshot.SnapshotResponseCompact;
+import com.payneteasy.herdrwatch.snapshot.SnapshotResponseFull;
+import com.payneteasy.herdrwatch.snapshot.SnapshotResponseStatus;
+import com.payneteasy.herdrwatch.snapshot.SnapshotTime;
 
 import io.quarkus.runtime.annotations.RegisterForReflection;
 
@@ -26,6 +34,14 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
             HostStore.StateFile.class,
             ServersResource.HostRequest.class,
             ServersResource.ServerView.class,
+            SnapshotAgent.class,
+            SnapshotAgentCompact.class,
+            SnapshotAgentStatus.class,
+            SnapshotResponseFull.class,
+            SnapshotResponseCompact.class,
+            SnapshotResponseStatus.class,
+            SnapshotTime.class,
+            SnapshotError.class,
         })
 public class NativeReflectionConfig {
 }

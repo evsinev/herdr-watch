@@ -15,6 +15,23 @@ quarkus:
     category:
       "com.payneteasy.herdrwatch":
         level: INFO
+  # OpenAPI: на билде генерируем спецификацию в ../docs/api (openapi.yaml + openapi.json).
+  # Закоммичен и проверяется в CI на дрейф. Snapshot API аннотирован @Schema/@Operation.
+  smallrye-openapi:
+    store-schema-directory: ../docs/api
+    info-title: herdr-watch API
+    info-version: "1"
+    info-description: "herdr-watch REST/Snapshot API. Контракт Snapshot: docs/api/herdr-watch-snapshot-protocol.md"
+
+# OpenAPI-версия спецификации: 3.0.3 (совместимо со swagger-request-validator в тестах).
+# servers пинуем на "/" — иначе smallrye автогенерит URL по http-порту, а он отличается
+# между сборкой (:8080) и @QuarkusTest (:8081), что даёт нестабильный (дрейфующий) файл.
+mp:
+  openapi:
+    servers: /
+    extensions:
+      smallrye:
+        openapi: "3.0.3"
   # Quinoa: сборка и отдача фронтенда из этого же Quarkus-приложения.
   # prod: `mvn package` соберёт ../frontend и упакует dist в jar.
   # dev:  `quarkus:dev` поднимет Vite (:5173) и будет проксировать к нему.

@@ -1,0 +1,53 @@
+{
+  "protocolVersion": 1,
+  "sequence": 0,
+  "agentCount": 3,
+  "agentTotal": 3,
+  "agents": [
+    {
+      "host": "hostA",
+      "project": "auth",
+      "branch": "feat/auth",
+      "agentName": "claude",
+      "agentDisplay": "claude",
+      "status": "BLOCKED",
+      "statusCode": 4,
+      "hostStale": false,
+      "worktreePath": "/home/dev/worktrees/paynet-ui/auth",
+      "worktreeLabel": "auth",
+      "linkedWorktree": true,
+      "detachedHead": false,
+      "prunable": false
+    },
+    {
+      "host": "hostB",
+      "project": "paynet-forms",
+      "branch": "main",
+      "agentName": "codex",
+      "agentDisplay": "codex",
+      "status": "WORKING",
+      "statusCode": 2,
+      "hostStale": false,
+      "worktreePath": "/home/dev/src/paynet-forms",
+      "worktreeLabel": "paynet-forms",
+      "linkedWorktree": false,
+      "detachedHead": false,
+      "prunable": false
+    },
+    {
+      "host": "hostC",
+      "project": "esp32",
+      "branch": "a1b2c3d",
+      "agentName": "",
+      "agentDisplay": "",
+      "status": "IDLE",
+      "statusCode": 1,
+      "hostStale": true,
+      "worktreePath": "/Users/dev/worktrees/herdr-watch/esp32",
+      "worktreeLabel": "esp32",
+      "linkedWorktree": true,
+      "detachedHead": true,
+      "prunable": true
+    }
+  ]
+}

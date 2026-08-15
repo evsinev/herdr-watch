@@ -1,0 +1,443 @@
+---
+openapi: 3.0.3
+info:
+  title: herdr-watch API
+  description: "herdr-watch REST/Snapshot API. Контракт Snapshot: docs/api/herdr-watch-snapshot-protocol.md"
+  version: "1"
+servers:
+- url: /
+tags:
+- name: Snapshot
+  description: Read-only снапшот состояния агентов (v1)
+paths:
+  /api/servers:
+    get:
+      tags:
+      - Servers Resource
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ServerView"
+    post:
+      tags:
+      - Servers Resource
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HostRequest"
+      responses:
+        "200":
+          description: OK
+  /api/servers/{id}:
+    put:
+      tags:
+      - Servers Resource
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HostRequest"
+      responses:
+        "200":
+          description: OK
+    delete:
+      tags:
+      - Servers Resource
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+  /api/stream:
+    get:
+      tags:
+      - Stream Resource
+      responses:
+        "200":
+          description: OK
+          content:
+            text/event-stream:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StreamEvent"
+  /api/v1/snapshot/agents:
+    get:
+      tags:
+      - Snapshot
+      summary: Снапшот агентов
+      description: Плоский снапшот состояния всех агентов. Профиль выбирается параметром
+        view (§3.5).
+      parameters:
+      - name: limit
+        in: query
+        description: "максимум записей после сортировки, 1..200"
+        schema:
+          default: "200"
+          type: string
+      - name: view
+        in: query
+        description: "профиль ответа: full | compact | status"
+        schema:
+          default: full
+          type: string
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        "200":
+          description: успех
+          content:
+            application/json;charset=UTF-8:
+              schema:
+                anyOf:
+                - $ref: "#/components/schemas/SnapshotResponseFull"
+                - $ref: "#/components/schemas/SnapshotResponseCompact"
+                - $ref: "#/components/schemas/SnapshotResponseStatus"
+        "304":
+          description: If-None-Match совпал с текущим ETag; тело отсутствует
+        "400":
+          description: limit вне диапазона/не число или неизвестный view
+          content:
+            application/json;charset=UTF-8:
+              schema:
+                $ref: "#/components/schemas/SnapshotError"
+        "503":
+          description: сервис не завершил первичную инициализацию
+          content:
+            application/json;charset=UTF-8:
+              schema:
+                $ref: "#/components/schemas/SnapshotError"
+  /api/v1/snapshot/time:
+    get:
+      tags:
+      - Snapshot
+      summary: Время сервера
+      description: "Часовой пояс и смещение сервера (§4). Без ETag; Date присутств\
+        ует, как у всех ответов."
+      responses:
+        "200":
+          description: успех
+          content:
+            application/json;charset=UTF-8:
+              schema:
+                $ref: "#/components/schemas/SnapshotTime"
+        "503":
+          description: сервис не завершил первичную инициализацию
+          content:
+            application/json;charset=UTF-8:
+              schema:
+                $ref: "#/components/schemas/SnapshotError"
+components:
+  schemas:
+    HostRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        host:
+          type: string
+        herdrPath:
+          type: string
+        pollInterval:
+          format: int32
+          type: integer
+        reconnectDelay:
+          format: int32
+          type: integer
+        enabled:
+          type: boolean
+        sshExtraOpts:
+          type: string
+        local:
+          type: boolean
+        dataSource:
+          type: string
+        socketPath:
+          type: string
+    ServerView:
+      type: object
+      properties:
+        id:
+          type: string
+        host:
+          type: string
+        herdrPath:
+          type: string
+        pollInterval:
+          format: int32
+          type: integer
+        reconnectDelay:
+          format: int32
+          type: integer
+        enabled:
+          type: boolean
+        sshExtraOpts:
+          type: string
+        local:
+          type: boolean
+        dataSource:
+          type: string
+        socketPath:
+          type: string
+        health:
+          type: string
+        lastUpdate:
+          format: int64
+          type: integer
+    SnapshotAgent:
+      description: Полная запись агента (профиль full)
+      required:
+      - host
+      - project
+      - branch
+      - agentName
+      - agentDisplay
+      - status
+      - statusCode
+      - hostStale
+      - worktreePath
+      - worktreeLabel
+      - linkedWorktree
+      - detachedHead
+      - prunable
+      type: object
+      properties:
+        host:
+          description: идентификатор хоста из конфигурации herdr-watch
+          type: string
+        project:
+          description: "basename корня git-репозитория, иначе basename рабочего ка\
+            талога"
+          type: string
+        branch:
+          description: имя ветки; в detached HEAD — сокращённый SHA
+          type: string
+        agentName:
+          description: "канонический идентификатор агента (claude, codex, ...); пу\
+            сто — не распознан"
+          type: string
+        agentDisplay:
+          description: отображаемое имя агента
+          type: string
+        status:
+          description: UNKNOWN|IDLE|WORKING|DONE|BLOCKED
+          type: string
+        statusCode:
+          format: int32
+          description: "числовой эквивалент status, 0..4"
+          type: integer
+        hostStale:
+          description: "хост недоступен, запись отражает последнее известное состо\
+            яние"
+          type: boolean
+        worktreePath:
+          description: абсолютный путь чекаута на целевом хосте; пусто — не удалось
+            определить
+          type: string
+        worktreeLabel:
+          description: метка воркстри в herdr; пусто — метки нет или это не воркстри
+          type: string
+        linkedWorktree:
+          description: "true — linked worktree, false — основной чекаут"
+          type: boolean
+        detachedHead:
+          description: HEAD отделён; при true branch содержит SHA
+          type: boolean
+        prunable:
+          description: git считает воркстри пригодным к git worktree prune
+          type: boolean
+    SnapshotAgentCompact:
+      description: Сокращённая запись агента (профиль compact)
+      required:
+      - host
+      - project
+      - branch
+      - agentName
+      - statusCode
+      - hostStale
+      - detachedHead
+      type: object
+      properties:
+        host:
+          type: string
+        project:
+          type: string
+        branch:
+          type: string
+        agentName:
+          type: string
+        statusCode:
+          format: int32
+          type: integer
+        hostStale:
+          type: boolean
+        detachedHead:
+          type: boolean
+    SnapshotAgentStatus:
+      description: Минимальная запись агента (профиль status)
+      required:
+      - host
+      - project
+      - statusCode
+      - hostStale
+      type: object
+      properties:
+        host:
+          type: string
+        project:
+          type: string
+        statusCode:
+          format: int32
+          type: integer
+        hostStale:
+          type: boolean
+    SnapshotError:
+      description: Тело ошибки Snapshot API
+      required:
+      - error
+      - message
+      type: object
+      properties:
+        error:
+          description: "стабильный машиночитаемый код: invalid_parameter | not_ready\
+            \ | internal_error"
+          type: string
+        message:
+          description: человекочитаемое пояснение; может меняться без смены версии
+          type: string
+    SnapshotResponseCompact:
+      description: "Снапшот агентов, профиль compact"
+      required:
+      - protocolVersion
+      - sequence
+      - agentCount
+      - agentTotal
+      - agents
+      type: object
+      properties:
+        protocolVersion:
+          format: int32
+          type: integer
+        sequence:
+          format: int64
+          type: integer
+        agentCount:
+          format: int32
+          type: integer
+        agentTotal:
+          format: int32
+          type: integer
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/SnapshotAgentCompact"
+    SnapshotResponseFull:
+      description: "Снапшот агентов, профиль full"
+      required:
+      - protocolVersion
+      - sequence
+      - agentCount
+      - agentTotal
+      - agents
+      type: object
+      properties:
+        protocolVersion:
+          format: int32
+          description: "версия контракта, сейчас 1"
+          type: integer
+        sequence:
+          format: int64
+          description: монотонный счётчик состояния; входит в ETag
+          type: integer
+        agentCount:
+          format: int32
+          description: длина agents после применения limit
+          type: integer
+        agentTotal:
+          format: int32
+          description: общее число агентов до применения limit; >= agentCount
+          type: integer
+        agents:
+          description: "может быть пустым, null не допускается"
+          type: array
+          items:
+            $ref: "#/components/schemas/SnapshotAgent"
+    SnapshotResponseStatus:
+      description: "Снапшот агентов, профиль status"
+      required:
+      - protocolVersion
+      - sequence
+      - agentCount
+      - agentTotal
+      - agents
+      type: object
+      properties:
+        protocolVersion:
+          format: int32
+          type: integer
+        sequence:
+          format: int64
+          type: integer
+        agentCount:
+          format: int32
+          type: integer
+        agentTotal:
+          format: int32
+          type: integer
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/SnapshotAgentStatus"
+    SnapshotTime:
+      description: Часовой пояс и смещение сервера
+      required:
+      - protocolVersion
+      - serverTime
+      - serverEpoch
+      - timeZone
+      - utcOffset
+      type: object
+      properties:
+        protocolVersion:
+          format: int32
+          description: версия контракта
+          type: integer
+        serverTime:
+          description: "ISO-8601 с офсетом, локальное время сервера"
+          type: string
+        serverEpoch:
+          format: int64
+          description: "Unix-время, секунды UTC"
+          type: integer
+        timeZone:
+          description: IANA tz id сервера
+          type: string
+        utcOffset:
+          format: int32
+          description: "смещение timeZone в секундах на момент serverEpoch, с учёт\
+            ом DST"
+          type: integer
+    StreamEvent:
+      type: object
+      properties:
+        type:
+          type: string
+        data: {}

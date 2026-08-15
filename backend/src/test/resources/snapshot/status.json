@@ -1,0 +1,26 @@
+{
+  "protocolVersion": 1,
+  "sequence": 0,
+  "agentCount": 3,
+  "agentTotal": 3,
+  "agents": [
+    {
+      "host": "hostA",
+      "project": "auth",
+      "statusCode": 4,
+      "hostStale": false
+    },
+    {
+      "host": "hostB",
+      "project": "paynet-forms",
+      "statusCode": 2,
+      "hostStale": false
+    },
+    {
+      "host": "hostC",
+      "project": "esp32",
+      "statusCode": 1,
+      "hostStale": true
+    }
+  ]
+}
