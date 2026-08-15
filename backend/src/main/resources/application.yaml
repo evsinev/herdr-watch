@@ -44,22 +44,42 @@ herdr-watch:
     chat-id: ${TELEGRAM_CHAT_ID:}
     notify-blocked: true
     notify-done: true
+  # Дефолт для СБОРКИ-релиза (prod): один локальный хост через socket API herdr —
+  # без bash/jq, кросс-платформенно (в т.ч. Windows: Java AF_UNIX SocketChannel).
+  # Личный fleet разработчика вынесен в профиль "%dev" (ниже), чтобы не попадать в
+  # скачиваемый бинарь. Свои хосты пользователь добавляет в Settings (state-файл).
   hosts:
     - id: local
       host: local              # ярлык (для local ssh-таргет не используется)
       local: true              # читать локальный herdr без ssh (текущий пользователь)
-      herdr-path: /opt/homebrew/bin/herdr
+      data-source: SOCKET      # прямой unix-сокет herdr (без spawn'а bash/jq)
       poll-interval: 2
-    - id: m3-local
-      host: m3-local           # обычный ssh-хост (имя из ~/.ssh/config)
-      herdr-path: /opt/homebrew/bin/herdr
-      poll-interval: 2
-    - id: dqa1
-      host: dqa1
-      poll-interval: 2
-    - id: dqa2
-      host: dqa2
-      poll-interval: 2
+
+# Dev-профиль (./mvnw quarkus:dev): личный fleet разработчика. В prod-бинарь НЕ попадает.
+# ВАЖНО: SmallRye накладывает список профиля на базовый ПО ИНДЕКСУ (пополе), а НЕ заменяет
+# целиком, и список никогда не укорачивается. Поэтому: (1) индекс 0 здесь должен быть задан
+# полностью (иначе унаследует data-source: SOCKET из базы) и (2) если база вырастет, профиль
+# обязан покрыть не меньше индексов, иначе «протекут» базовые записи. Тот же инвариант — в "%test".
+"%dev":
+  herdr-watch:
+    hosts:
+      - id: local
+        host: local
+        local: true
+        data-source: COMMAND   # явно перебиваем index0 = SOCKET из базы (см. заметку о
+                               # merge-by-index над "%dev")
+        herdr-path: /opt/homebrew/bin/herdr
+        poll-interval: 2
+      - id: m3-local
+        host: m3-local         # обычный ssh-хост (имя из ~/.ssh/config)
+        herdr-path: /opt/homebrew/bin/herdr
+        poll-interval: 2
+      - id: dqa1
+        host: dqa1
+        poll-interval: 2
+      - id: dqa2
+        host: dqa2
+        poll-interval: 2
 
 # Тестовый профиль (@QuarkusTest): без Quinoa (не звать npm/vite) и все bootstrap-хосты
 # disabled → SourceManager не поднимает реальные ssh/bash-источники. (state-file не

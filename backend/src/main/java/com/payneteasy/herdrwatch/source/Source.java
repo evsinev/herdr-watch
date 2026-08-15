@@ -6,6 +6,10 @@ package com.payneteasy.herdrwatch.source;
  * (удалённый хост по ssh) и {@link LocalSource} (локальный herdr без ssh).
  */
 public interface Source extends Runnable {
+
+    /** Крутимся ли на Windows — влияет на доступность bash/jq и ssh-мультиплексирования. */
+    boolean IS_WINDOWS = System.getProperty("os.name", "").toLowerCase().contains("win");
+
     /** Мгновенно и чисто остановить источник (для hot-remove/hot-edit). */
     void stop();
 }

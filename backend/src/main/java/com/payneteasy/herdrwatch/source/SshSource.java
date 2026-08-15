@@ -13,17 +13,32 @@ import java.util.List;
  */
 public class SshSource extends AbstractHerdrSource {
 
-    // те же опции, что в bash-скрипте, плюс мультиплексирование соединений
-    // (package-private: переиспользуется SocketDuplex.Remote для ssh+socat)
-    static final String[] SSH_BASE_OPTS = {
+    // Базовые опции, что и в bash-скрипте. Мультиплексирование соединений
+    // (ControlMaster/ControlPath/ControlPersist) добавляем ТОЛЬКО не на Windows:
+    // Windows OpenSSH его не реализует, а `~` в ControlPath не раскрывает — из-за чего
+    // соединение может сразу отвалиться. См. sshBaseOpts().
+    private static final String[] SSH_COMMON_OPTS = {
             "-o", "BatchMode=yes",
             "-o", "ServerAliveInterval=5",
             "-o", "ServerAliveCountMax=2",
             "-o", "ConnectTimeout=10",
+    };
+
+    private static final String[] SSH_MUX_OPTS = {
             "-o", "ControlMaster=auto",
             "-o", "ControlPath=~/.ssh/cm-herdr-%r@%h:%p",
             "-o", "ControlPersist=30s"
     };
+
+    /**
+     * Базовые ssh-опции для этой ОС (package-private: переиспользуется SocketDuplex.Remote).
+     * На Windows опускаем мультиплексирование — Windows OpenSSH его не поддерживает.
+     */
+    static List<String> sshBaseOpts() {
+        List<String> opts = new ArrayList<>(List.of(SSH_COMMON_OPTS));
+        if (!IS_WINDOWS) opts.addAll(List.of(SSH_MUX_OPTS));
+        return opts;
+    }
 
     public SshSource(HostDef cfg, Registry registry) {
         super(cfg, registry);
@@ -43,7 +58,7 @@ public class SshSource extends AbstractHerdrSource {
     protected List<String> processCommand(String frameCmd) {
         List<String> cmd = new ArrayList<>();
         cmd.add("ssh");
-        for (String o : SSH_BASE_OPTS) cmd.add(o);
+        cmd.addAll(sshBaseOpts());
         String extra = cfg.sshExtraOpts();
         if (extra != null && !extra.isBlank()) {
             for (String tok : extra.trim().split("\\s+")) if (!tok.isBlank()) cmd.add(tok);
