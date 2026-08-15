@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Единственный источник истины для дашборда. Держит последнее известное
@@ -33,6 +34,14 @@ public class Registry {
 
     private final Map<String, HostState> hosts = new ConcurrentHashMap<>();
     private final BroadcastProcessor<StreamEvent> bus = BroadcastProcessor.create();
+
+    /**
+     * Монотонный счётчик состояния, общий с SSE: инкрементится на каждую мутацию
+     * (через {@link #emit}). Не убывает в пределах жизни процесса, сбрасывается при
+     * рестарте. Используется Snapshot API как {@code sequence} и в {@code ETag}
+     * (§3.3/§3.10 контракта). Содержимое SSE-событий и их вывод не меняет.
+     */
+    private final AtomicLong sequence = new AtomicLong(0);
 
     /** Внутреннее событие «применён CONNECTED-кадр» для наблюдателей (Telegram и т.п.). */
     @Inject Event<FrameApplied> frameEvents;
@@ -97,7 +106,14 @@ public class Registry {
         return bus;
     }
 
+    /** Текущее значение монотонного счётчика состояния (для Snapshot API / ETag). */
+    public long sequence() {
+        return sequence.get();
+    }
+
     private void emit(String type, Object data) {
+        // любая мутация состояния = новый sequence (даже если SSE-подписчик упадёт ниже)
+        sequence.incrementAndGet();
         // страховка: проблема любого SSE-подписчика не должна проникать в цикл опроса
         try {
             bus.onNext(new StreamEvent(type, data));

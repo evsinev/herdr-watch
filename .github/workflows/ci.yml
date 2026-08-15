@@ -43,6 +43,12 @@ jobs:
 
       # `mvnw verify` triggers the Quinoa build (npm install + `tsc --noEmit` + vite build)
       # during augmentation, and runs the backend tests (JUnit + @QuarkusTest, %test profile).
+      # Augmentation also regenerates docs/api/openapi.yaml (store-schema-directory).
       - name: Verify (backend tests + compile + frontend build)
         working-directory: backend
         run: ./mvnw -B --no-transfer-progress verify
+
+      # OpenAPI-дрейф: закоммиченная спецификация обязана совпадать со сгенерированной.
+      # Если менялись эндпоинты/схемы без перегенерации docs/api/openapi.yaml — падаем.
+      - name: OpenAPI spec is up to date
+        run: git diff --exit-code -- docs/api/openapi.yaml

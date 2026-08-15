@@ -1,0 +1,35 @@
+{
+  "protocolVersion": 1,
+  "sequence": 0,
+  "agentCount": 3,
+  "agentTotal": 3,
+  "agents": [
+    {
+      "host": "hostA",
+      "project": "auth",
+      "branch": "feat/auth",
+      "agentName": "claude",
+      "statusCode": 4,
+      "hostStale": false,
+      "detachedHead": false
+    },
+    {
+      "host": "hostB",
+      "project": "paynet-forms",
+      "branch": "main",
+      "agentName": "codex",
+      "statusCode": 2,
+      "hostStale": false,
+      "detachedHead": false
+    },
+    {
+      "host": "hostC",
+      "project": "esp32",
+      "branch": "a1b2c3d",
+      "agentName": "",
+      "statusCode": 1,
+      "hostStale": true,
+      "detachedHead": true
+    }
+  ]
+}
