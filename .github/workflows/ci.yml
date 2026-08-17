@@ -52,3 +52,25 @@ jobs:
       # Если менялись эндпоинты/схемы без перегенерации docs/api/openapi.yaml — падаем.
       - name: OpenAPI spec is up to date
         run: git diff --exit-code -- docs/api/openapi.yaml
+
+      # Smoke-guard отдачи web-UI. %test отключает Quinoa, поэтому "/" не покрыт ни одним
+      # @QuarkusTest. Поднимаем собранный fast-jar и проверяем, что "/" реально отдаёт SPA
+      # (регрессия v0.0.9: top-level ключ mp: попал в середину quarkus: → потерялся
+      # quarkus.quinoa → фронтенд не собирался и "/" отвечал 404).
+      - name: Smoke — web UI is served at /
+        working-directory: backend
+        run: |
+          java -jar target/quarkus-app/quarkus-run.jar > /tmp/app.log 2>&1 &
+          APP_PID=$!
+          trap 'kill $APP_PID 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            curl -sf -o /dev/null http://localhost:8080/q/health/ready && break
+            sleep 1
+          done
+          set -e
+          body=$(curl -sf http://localhost:8080/)
+          echo "$body" | grep -q '<div id="root"' \
+            || { echo "FAIL: / did not serve index.html"; echo "$body" | head; exit 1; }
+          curl -sf -o /dev/null http://localhost:8080/api/servers
+          curl -sf -o /dev/null http://localhost:8080/q/openapi
+          echo "smoke OK: / serves the SPA, /api and /q/openapi respond"
