@@ -22,16 +22,6 @@ quarkus:
     info-title: herdr-watch API
     info-version: "1"
     info-description: "herdr-watch REST/Snapshot API. Контракт Snapshot: docs/api/herdr-watch-snapshot-protocol.md"
-
-# OpenAPI-версия спецификации: 3.0.3 (совместимо со swagger-request-validator в тестах).
-# servers пинуем на "/" — иначе smallrye автогенерит URL по http-порту, а он отличается
-# между сборкой (:8080) и @QuarkusTest (:8081), что даёт нестабильный (дрейфующий) файл.
-mp:
-  openapi:
-    servers: /
-    extensions:
-      smallrye:
-        openapi: "3.0.3"
   # Quinoa: сборка и отдача фронтенда из этого же Quarkus-приложения.
   # prod: `mvn package` соберёт ../frontend и упакует dist в jar.
   # dev:  `quarkus:dev` поднимет Vite (:5173) и будет проксировать к нему.
@@ -46,6 +36,19 @@ mp:
       - /q
     dev-server:
       port: 5173               # порт Vite, к которому Quinoa проксирует в dev
+
+# OpenAPI-спецификация: версия 3.0.3 (совместимо со swagger-request-validator в тестах);
+# servers пинуем на "/" — иначе smallrye автогенерит URL по http-порту, а он отличается
+# между сборкой (:8080) и @QuarkusTest (:8081), что даёт нестабильный (дрейфующий) файл.
+# ВАЖНО: `mp` — top-level ключ и ДОЛЖЕН идти ПОСЛЕ всего блока `quarkus:`. Если поставить его
+# в середину `quarkus:`, YAML закроет mapping и «съест» следующие ключи (был баг: терялся
+# quarkus.quinoa → Quinoa не собирала фронтенд и `/` отдавал 404).
+mp:
+  openapi:
+    servers: /
+    extensions:
+      smallrye:
+        openapi: "3.0.3"
 
 # Bootstrap-список herdr-серверов для мониторинга.
 # id      — логическое имя в UI
