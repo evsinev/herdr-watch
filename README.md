@@ -343,13 +343,20 @@ Install by wrapping your existing `statusLine` command in `~/.claude/settings.js
 ```json
 "statusLine": {
   "type": "command",
-  "command": "python3 /path/to/herdr-watch/scripts/herdr-watch-statusline-hook.py python3 ~/.claude/statusline.py"
+  "command": "python3 /path/to/herdr-watch/scripts/herdr-watch-statusline-hook.py python3 ~/.claude/statusline.py",
+  "refreshInterval": 300
 }
 ```
 
 Everything after the hook's own path is your command, run exactly as before. If
 you have no statusline yet, `... hook.py echo ""` records the quota and prints
 nothing.
+
+`refreshInterval` is optional but recommended here. Claude Code's own statusline
+triggers are session-scoped (a new assistant message, `/compact`, a permission-mode
+change), so **quota spent by background subagents or by another session on the same
+account moves the real numbers without waking the statusline**. The timer re-runs
+the command anyway and catches that. Cost is one extra `python3` start per tick.
 
 **To remove it:** delete the wrapper prefix from that one line, and (optionally)
 `rm ~/.config/herdr-watch/claude-usage.json`. Nothing else persists.
@@ -364,8 +371,17 @@ stdout itself. Cost: one extra Python start (~30 ms) per statusline refresh.
 **The numbers only advance while a Claude Code session is running.** With no
 session open, the newest reading simply ages. herdr-watch shows the capture time
 next to every reading and dims the gauge once it passes
-`herdr-watch.claude-usage.stale-after` (default 15 min) — old figures are still
+`herdr-watch.claude-usage.stale-after` (default 45 min) — old figures are still
 shown, marked stale, rather than silently passing for current.
+
+The capture time is **when the figures last changed**, not when the hook last ran:
+the hook leaves the file alone when the numbers come back identical. That is what
+keeps the indicator honest under `refreshInterval` — a timer tick happens without
+any API call in between, so the payload still carries the previous response's
+figures, and re-stamping them would present hour-old numbers as current.
+
+So a dimmed gauge means "nothing has moved for a while", which on a quiet account is
+simply true — and harmless, since nothing is being consumed.
 
 Before the hook is installed nothing is rendered at all, and the API reports
 `NOT_CONFIGURED`. That is not an error state.
@@ -377,7 +393,7 @@ herdr-watch:
   claude-usage:
     state-file: ~/.config/herdr-watch/claude-usage.json   # what the hook writes
     poll-interval: 5s                                     # mtime check; parses only on change
-    stale-after: 15m                                      # age at which a reading is marked stale
+    stale-after: 45m                                      # age at which a reading is marked stale
 ```
 
 Colour bands (70 % warning, 90 % critical) live in `usage/UsageSeverity.java` and

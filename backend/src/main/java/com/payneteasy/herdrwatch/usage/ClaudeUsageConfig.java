@@ -22,6 +22,6 @@ public interface ClaudeUsageConfig {
     String pollInterval();
 
     /** Возраст записи, после которого она считается STALE (Duration-строка). */
-    @WithDefault("15m")
+    @WithDefault("45m")
     String staleAfter();
 }

@@ -31,6 +31,12 @@ written atomically (temp file in the same directory + rename), shape:
 A window absent from the payload is absent here too — never a zero and never a
 placeholder reset time. A payload with no usable window leaves the previous
 record untouched (normal before the session's first API response).
+
+The file is rewritten ONLY when the figures actually change, so `capturedAt` means
+"when these numbers were last seen to move" and can never overstate freshness.
+That matters once `statusLine.refreshInterval` is set: those ticks re-run us on a
+timer without any API call in between, so the payload carries the same figures as
+before — re-stamping them would pass hour-old numbers off as current.
 """
 
 import json
@@ -65,19 +71,38 @@ def window(raw):
     return {"used_percentage": used, "resets_at": resets}
 
 
-def record(payload):
-    """{capturedAt, <window>...} for the payload, or None when nothing is usable."""
+def windows_of(payload):
+    """The validated windows alone (no timestamp), or None when nothing is usable."""
     if not isinstance(payload, dict):
         return None
     limits = payload.get("rate_limits")
     if not isinstance(limits, dict):
         return None
-    out = {"capturedAt": int(time.time())}
+    out = {}
     for name in WINDOWS:
         w = window(limits.get(name))
         if w is not None:
             out[name] = w
-    return out if len(out) > 1 else None
+    return out or None
+
+
+def read_existing(path):
+    """Parsed record, or None — missing, unreadable and corrupt all collapse to None."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            rec = json.load(f)
+        return rec if isinstance(rec, dict) else None
+    except Exception:
+        return None
+
+
+def unchanged(new, existing):
+    """True when the recorded figures already equal these ones."""
+    if not isinstance(existing, dict):
+        return False
+    if not isinstance(existing.get("capturedAt"), int):
+        return False          # без времени запись бесполезна — перезапишем
+    return all(existing.get(name) == new.get(name) for name in WINDOWS)
 
 
 def write_atomically(path, rec):
@@ -103,9 +128,18 @@ def write_atomically(path, rec):
 def capture(data):
     """Best-effort capture. Never raises — the statusline must not notice us."""
     try:
-        rec = record(json.loads(data.decode("utf-8")))
-        if rec is not None:
-            write_atomically(state_file(), rec)
+        new = windows_of(json.loads(data.decode("utf-8")))
+        if new is None:
+            return                      # нет rate_limits — прошлую запись не трогаем
+        path = state_file()
+        if unchanged(new, read_existing(path)):
+            # Цифры те же — файл (и его mtime) не трогаем вовсе. capturedAt обязан
+            # означать «когда показания в последний раз сдвинулись»: с refreshInterval
+            # хук зовут по таймеру, а rate_limits в payload свежее последнего ответа
+            # API не становятся. Переставляя время на каждый вызов, мы бы выдавали
+            # часовой давности цифры за секундные — и убивали индикатор устаревания.
+            return
+        write_atomically(path, dict(capturedAt=int(time.time()), **new))
     except Exception:
         pass
 

@@ -76,7 +76,11 @@ statusline hook (Claude Code) ─► ~/.config/herdr-watch/claude-usage.json ─
   NOT pass `--json`.
 - Claude quota **only advances while a Claude Code session is running**. With no session
   open the newest reading just ages — model that as `STALE` with a visible `capturedAt`,
-  never as 0 %. An absent window is `null`/omitted, never zero. The Snapshot API forbids
+  never as 0 %.
+- The hook rewrites the state file **only when the figures change**, so `capturedAt` means
+  «когда показания сдвинулись», не «когда хук отработал». Не «чинить» это: с
+  `statusLine.refreshInterval` хук зовут по таймеру без API-вызова, и штамповка времени на
+  каждый запуск выдавала бы старые цифры за свежие — индикатор устаревания умирает. An absent window is `null`/omitted, never zero. The Snapshot API forbids
   `null` (§3.4), so `SnapshotProjection.projectUsage` omits absent windows from the array.
 - Secrets (Telegram token/chat id) come from **env only** (`TELEGRAM_*`), never the
   state file or UI.

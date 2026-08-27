@@ -115,6 +115,92 @@ class HookTest(unittest.TestCase):
         self.assertEqual(out, b"")
         self.assertEqual(rc, 0)
 
+    # --- capturedAt честен: пишем только когда цифры сдвинулись ---
+
+    def seed(self, rec):
+        """Положить готовую запись в state-файл (мимо хука)."""
+        os.makedirs(os.path.dirname(self.state), exist_ok=True)
+        with open(self.state, "w", encoding="utf-8") as f:
+            json.dump(rec, f)
+
+    def mtime_ns(self):
+        return os.stat(self.state).st_mtime_ns
+
+    def test_identical_payload_twice_does_not_rewrite_the_file(self):
+        payload = json.dumps(BOTH).encode()
+        run(payload, self.state)
+        before_mtime, before_bytes = self.mtime_ns(), open(self.state, "rb").read()
+
+        # Так выглядит тик statusLine.refreshInterval: тот же payload, API-вызова не было.
+        out, _, rc = run(payload, self.state)
+
+        self.assertEqual(out, payload)          # прозрачность не пострадала
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.mtime_ns(), before_mtime, "файл не должен переписываться")
+        self.assertEqual(open(self.state, "rb").read(), before_bytes)
+
+    def test_changed_figures_rewrite_and_advance_captured_at(self):
+        old_captured = 1000000000
+        self.seed({
+            "capturedAt": old_captured,
+            "five_hour": {"used_percentage": 27, "resets_at": 1787803200},
+            "seven_day": {"used_percentage": 24, "resets_at": 1788206400},
+        })
+        payload = json.dumps({
+            "rate_limits": {
+                "five_hour": {"used_percentage": 31, "resets_at": 1787803200},
+                "seven_day": {"used_percentage": 24, "resets_at": 1788206400},
+            }
+        }).encode()
+        run(payload, self.state)
+
+        rec = self.read_state()
+        self.assertEqual(rec["five_hour"]["used_percentage"], 31)
+        self.assertGreater(rec["capturedAt"], old_captured, "время должно сдвинуться")
+
+    def test_reset_time_change_alone_counts_as_a_change(self):
+        # Окно сбросилось: процент тот же, resets_at новый — это новые показания.
+        self.seed({
+            "capturedAt": 1000000000,
+            "five_hour": {"used_percentage": 27, "resets_at": 1787803200},
+        })
+        payload = json.dumps({
+            "rate_limits": {"five_hour": {"used_percentage": 27, "resets_at": 1787821200}}
+        }).encode()
+        run(payload, self.state)
+
+        self.assertEqual(self.read_state()["five_hour"]["resets_at"], 1787821200)
+
+    def test_window_disappearing_counts_as_a_change(self):
+        run(json.dumps(BOTH).encode(), self.state)
+        payload = json.dumps({
+            "rate_limits": {"five_hour": {"used_percentage": 27, "resets_at": 1787803200}}
+        }).encode()
+        run(payload, self.state)
+
+        rec = self.read_state()
+        self.assertIn("five_hour", rec)
+        self.assertNotIn("seven_day", rec, "исчезнувшее окно — тоже изменение")
+
+    def test_corrupt_existing_file_is_repaired_on_the_next_run(self):
+        self.seed({"capturedAt": 1000000000, "five_hour": {"used_percentage": 27,
+                                                           "resets_at": 1787803200}})
+        with open(self.state, "w", encoding="utf-8") as f:
+            f.write("{ broken")
+        run(json.dumps(BOTH).encode(), self.state)
+
+        rec = self.read_state()                  # снова разбирается = починен
+        self.assertEqual(rec["five_hour"]["used_percentage"], 27)
+        self.assertEqual(rec["seven_day"]["used_percentage"], 24)
+        self.assertIsInstance(rec["capturedAt"], int)
+
+    def test_record_without_captured_at_is_rewritten(self):
+        self.seed({"five_hour": {"used_percentage": 27, "resets_at": 1787803200},
+                   "seven_day": {"used_percentage": 24, "resets_at": 1788206400}})
+        run(json.dumps(BOTH).encode(), self.state)
+
+        self.assertIsInstance(self.read_state()["capturedAt"], int)
+
     # --- transparency ---
 
     def test_unwritable_target_still_forwards_and_succeeds(self):

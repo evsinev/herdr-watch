@@ -64,7 +64,7 @@ public class ClaudeUsageReader {
     @PostConstruct
     void init() {
         file = resolvePath(config.stateFile());
-        staleAfter = parseDuration(config.staleAfter(), Duration.ofMinutes(15));
+        staleAfter = parseDuration(config.staleAfter(), Duration.ofMinutes(45));
         log.info("claude usage: watching {} (stale after {})", file, staleAfter);
     }
 

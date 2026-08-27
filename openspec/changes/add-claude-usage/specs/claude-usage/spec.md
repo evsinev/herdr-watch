@@ -48,7 +48,14 @@ Writes SHALL be atomic: a reader MUST observe either the complete previous
 contents or the complete new contents, never a partial or interleaved write.
 Concurrent writers SHALL be safe, with the most recent write winning.
 
-Each record SHALL carry the time at which it was captured.
+Each record SHALL carry the time at which it was captured. That time MUST NOT be
+refreshed when the figures have not changed: the hook may be invoked on a timer,
+with no new figures observed in between, and a refreshed time would present old
+figures as current.
+
+#### Scenario: Figures unchanged since the last recording
+- **WHEN** the hook runs again and the figures are identical to those already recorded
+- **THEN** the record is left untouched, so its time keeps pointing at when those figures were observed
 
 #### Scenario: Reader during a write
 - **WHEN** herdr-watch reads the state while the hook is writing

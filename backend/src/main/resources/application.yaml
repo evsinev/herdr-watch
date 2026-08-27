@@ -71,7 +71,7 @@ herdr-watch:
   claude-usage:
     state-file: ~/.config/herdr-watch/claude-usage.json
     poll-interval: 5s
-    stale-after: 15m
+    stale-after: 45m
   # Дефолт для СБОРКИ-релиза (prod): один локальный хост через socket API herdr —
   # без bash/jq, кросс-платформенно (в т.ч. Windows: Java AF_UNIX SocketChannel).
   # Личный fleet разработчика вынесен в профиль "%dev" (ниже), чтобы не попадать в
