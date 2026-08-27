@@ -25,6 +25,14 @@ Captured on the reference machine (Claude Code 2.1.247) by temporarily wrapping
 - [x] 2.5 Leave the previous record untouched when the payload has no `rate_limits` (normal before the first API response)
 - [x] 2.6 Tests: payload with both windows; with one; with none; malformed input; unwritable target — in every case stdin is forwarded unchanged and exit status is the wrapped command's
 - [x] 2.7 Verify the hook writes nothing of its own to stdout
+- [x] 2.8 Write the state file ONLY when the figures changed, so `capturedAt` means «когда
+      показания сдвинулись». Нужно из-за `statusLine.refreshInterval`: тик по таймеру не
+      делает API-вызова, `rate_limits` в payload те же, и штамповка времени на каждый запуск
+      выдавала бы часовой давности цифры за секундные. Неизменившийся тик не трогает и mtime —
+      backend-поллер тоже молчит. Порог `stale-after` поднят 15m → 45m под новую семантику.
+- [x] 2.9 Тесты: одинаковый payload дважды → mtime не двигается; изменившийся процент →
+      `capturedAt` растёт; смена только `resets_at` → это изменение; исчезнувшее окно → запись
+      переписана; битый/безвременный существующий файл → чинится
 
 ## 3. Backend reader
 
