@@ -17,3 +17,5 @@ tray-macos/*.app/
 
 # OpenAPI: коммитим только yaml (проверяется в CI на дрейф); json генерится рядом.
 docs/api/openapi.json
+
+.env
