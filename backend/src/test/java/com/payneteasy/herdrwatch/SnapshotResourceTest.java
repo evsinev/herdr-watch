@@ -8,6 +8,7 @@ import com.payneteasy.herdrwatch.model.Model.AgentInfo;
 import com.payneteasy.herdrwatch.model.Model.Health;
 import com.payneteasy.herdrwatch.model.Model.WorkspaceInfo;
 import com.payneteasy.herdrwatch.model.Model.WorktreeInfo;
+import com.payneteasy.herdrwatch.usage.ClaudeUsage;
 
 import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.filter.Filter;
@@ -36,6 +37,7 @@ class SnapshotResourceTest {
 
     private static final ObjectMapper M = new ObjectMapper();
     private static final String AGENTS = "/api/v1/snapshot/agents";
+    private static final String USAGE = "/api/v1/snapshot/usage";
     private static final List<String> SEEDED = List.of("hostA", "hostB", "hostC", "tie-a", "tie-b");
 
     @Inject Registry registry;
@@ -83,6 +85,7 @@ class SnapshotResourceTest {
     @AfterEach
     void cleanup() {
         SEEDED.forEach(registry::remove);
+        registry.updateClaudeUsage(ClaudeUsage.notConfigured());   // квота — общее состояние
     }
 
     // --- golden per profile (§3.5): состав полей фиксирован → тест исчерпывающий ---
@@ -256,6 +259,123 @@ class SnapshotResourceTest {
                 .body("utcOffset", notNullValue());
     }
 
+    // --- квота Claude (§9, дизайн D7/D8) ---
+
+    @Test
+    void usageReportsBothWindowsWithSeverityAndCaptureTime() {
+        registry.updateClaudeUsage(ClaudeUsage.ok(1787797108L,
+                new ClaudeUsage.Window(27, 1787803200L),
+                new ClaudeUsage.Window(95, 1788206400L)));
+
+        given().when().get(USAGE).then().statusCode(200)
+                .header("Date", notNullValue())
+                .header("Cache-Control", equalTo("no-store"))
+                .body("protocolVersion", equalTo(1))
+                .body("state", equalTo("OK"))
+                .body("severityCode", equalTo(3))          // худшее из окон: 95% → critical
+                .body("capturedAt", equalTo(1787797108))
+                .body("windows.size()", equalTo(2))
+                .body("windows.find { it.type == 'five_hour' }.usedPercent", equalTo(27))
+                .body("windows.find { it.type == 'five_hour' }.resetsAt", equalTo(1787803200))
+                .body("windows.find { it.type == 'seven_day' }.usedPercent", equalTo(95));
+    }
+
+    @Test
+    void absentWindowIsOmittedFromTheArrayNotZeroed() {
+        registry.updateClaudeUsage(ClaudeUsage.ok(1787797108L,
+                new ClaudeUsage.Window(27, 1787803200L), null));
+
+        given().when().get(USAGE).then().statusCode(200)
+                .body("windows.size()", equalTo(1))
+                .body("windows[0].type", equalTo("five_hour"));
+    }
+
+    @Test
+    void notConfiguredIsASuccessfulEmptyAnswerNotAnError() {
+        registry.updateClaudeUsage(ClaudeUsage.notConfigured());
+
+        given().when().get(USAGE).then().statusCode(200)
+                .body("state", equalTo("NOT_CONFIGURED"))
+                .body("severityCode", equalTo(0))
+                .body("capturedAt", equalTo(0))            // §3.4: не null, а 0
+                .body("windows.size()", equalTo(0));
+    }
+
+    @Test
+    void staleSnapshotKeepsItsFiguresAndCaptureTime() {
+        registry.updateClaudeUsage(ClaudeUsage.ok(1787797108L,
+                new ClaudeUsage.Window(27, 1787803200L), null).stale("aged out"));
+
+        given().when().get(USAGE).then().statusCode(200)
+                .body("state", equalTo("STALE"))
+                .body("capturedAt", equalTo(1787797108))
+                .body("windows[0].usedPercent", equalTo(27));
+    }
+
+    @Test
+    void noFieldIsEverNull() throws Exception {
+        // §3.4 запрещает null в любом состоянии — проверяем все три.
+        List<ClaudeUsage> states = List.of(
+                ClaudeUsage.notConfigured(),
+                ClaudeUsage.ok(1787797108L, null, null),                       // ни одного окна
+                ClaudeUsage.ok(1787797108L, new ClaudeUsage.Window(27, 1787803200L),
+                        new ClaudeUsage.Window(24, 1788206400L)).stale("aged out"));
+        for (ClaudeUsage u : states) {
+            registry.updateClaudeUsage(u);
+            JsonNode body = M.readTree(given().when().get(USAGE).then().statusCode(200)
+                    .extract().asString());
+            assertNoNulls(body, "$");
+        }
+    }
+
+    private static void assertNoNulls(JsonNode node, String path) {
+        assertTrue(!node.isNull(), "null по пути " + path);
+        if (node.isObject()) {
+            node.fields().forEachRemaining(e -> assertNoNulls(e.getValue(), path + "." + e.getKey()));
+        } else if (node.isArray()) {
+            for (int i = 0; i < node.size(); i++) assertNoNulls(node.get(i), path + "[" + i + "]");
+        }
+    }
+
+    @Test
+    void usageEtagIsCapturedAtAndSupportsConditionalRequests() {
+        registry.updateClaudeUsage(ClaudeUsage.ok(1787797108L,
+                new ClaudeUsage.Window(27, 1787803200L), null));
+
+        String etag = given().when().get(USAGE).then().statusCode(200)
+                .extract().header("ETag");
+        assertEquals("\"usage-1787797108\"", etag);
+
+        given().header("If-None-Match", etag).when().get(USAGE)
+                .then().statusCode(304)
+                .header("ETag", equalTo(etag))
+                .header("Date", notNullValue())
+                .body(emptyOrNullString());
+
+        // Новая запись → новый валидатор → снова полное тело.
+        registry.updateClaudeUsage(ClaudeUsage.ok(1787799999L,
+                new ClaudeUsage.Window(31, 1787803200L), null));
+        given().header("If-None-Match", etag).when().get(USAGE).then().statusCode(200);
+    }
+
+    @Test
+    void usageDoesNotDisturbTheAgentsEndpoint() {
+        // §7: добавление эндпоинта не меняет ни один профиль и не двигает версию.
+        registry.updateClaudeUsage(ClaudeUsage.ok(1787797108L,
+                new ClaudeUsage.Window(27, 1787803200L),
+                new ClaudeUsage.Window(24, 1788206400L)));
+
+        for (String view : List.of("full", "compact", "status")) {
+            given().when().get(AGENTS + "?view=" + view).then().statusCode(200)
+                    .body("protocolVersion", equalTo(1))
+                    .body("agents[0].usedPercent", equalTo(null))
+                    .body("agents[0].severityCode", equalTo(null))
+                    .body("severityCode", equalTo(null))
+                    .body("windows", equalTo(null))
+                    .body("capturedAt", equalTo(null));
+        }
+    }
+
     // --- валидация обоих эндпоинтов против сгенерированной docs/api/openapi.yaml ---
 
     @Test
@@ -267,5 +387,7 @@ class SnapshotResourceTest {
         }
         Response t = given().filter(validation).when().get("/api/v1/snapshot/time");
         assertEquals(200, t.statusCode(), "ответ /time не соответствует openapi.yaml: " + t.asString());
+        Response u = given().filter(validation).when().get(USAGE);
+        assertEquals(200, u.statusCode(), "ответ /usage не соответствует openapi.yaml: " + u.asString());
     }
 }

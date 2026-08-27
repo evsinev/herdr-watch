@@ -1,5 +1,6 @@
-import type { HostState } from "@/lib/types";
+import type { ClaudeUsage, HostState } from "@/lib/types";
 import { badgeStyle, healthOf } from "@/lib/theme";
+import { UsageGauge } from "@/components/UsageGauge";
 import { WorkspaceGroup } from "./WorkspaceGroup";
 
 function agoSeconds(lastUpdate: number | null): number | null {
@@ -7,7 +8,11 @@ function agoSeconds(lastUpdate: number | null): number | null {
   return Math.max(0, Math.round(Date.now() / 1000 - lastUpdate));
 }
 
-export function HostCard({ host }: { host: HostState }) {
+/**
+ * `usage` передают ТОЛЬКО для локального хоста (см. MonitorView) — квота относится
+ * к аккаунту Claude, а не к машине, и на удалённых карточках её быть не должно.
+ */
+export function HostCard({ host, usage = null }: { host: HostState; usage?: ClaudeUsage | null }) {
   const unreachable = host.health === "UNREACHABLE";
   const h = healthOf(host.health);
   const age = agoSeconds(host.lastUpdate);
@@ -44,6 +49,11 @@ export function HostCard({ host }: { host: HostState }) {
           </span>
         </div>
         <div className="mt-1.5 font-mono text-[11.5px] text-muted">{meta}</div>
+        {usage && (
+          <div className="mt-3">
+            <UsageGauge usage={usage} />
+          </div>
+        )}
       </div>
 
       {/* body */}

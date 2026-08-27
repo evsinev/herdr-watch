@@ -1,4 +1,4 @@
-import type { ApiErrors, HostRequest, ServerView } from "./types";
+import type { ApiErrors, ClaudeUsage, HostRequest, ServerView } from "./types";
 
 const BASE = "/api/servers";
 
@@ -30,6 +30,14 @@ async function ensureOk<T>(res: Response): Promise<T> {
 
 export async function getServers(): Promise<ServerView[]> {
   return ensureOk<ServerView[]>(await fetch(BASE));
+}
+
+/**
+ * Текущая квота Claude. SSE шлёт `claude_usage` только при ИЗМЕНЕНИИ, поэтому
+ * только что подключившемуся клиенту первый снапшот нужно взять здесь.
+ */
+export async function getClaudeUsage(): Promise<ClaudeUsage> {
+  return ensureOk<ClaudeUsage>(await fetch("/api/claude-usage"));
 }
 
 export async function createServer(req: HostRequest): Promise<ServerView> {

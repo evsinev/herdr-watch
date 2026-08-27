@@ -43,11 +43,32 @@ export interface HostState {
   agents: AgentInfo[];
 }
 
+// Квота подписки Claude (аккаунт целиком, не хост). Показания приносит
+// statusline-хук Claude Code; окно, о котором показаний нет, приходит как null —
+// именно null, а не 0%: «не отчиталось» и «израсходовано 0%» — разные вещи.
+export type ClaudeUsageState = "NOT_CONFIGURED" | "OK" | "STALE";
+
+export interface ClaudeUsageWindow {
+  usedPercent: number; // целые проценты 0..100
+  resetsAt: number; // unix seconds
+}
+
+export interface ClaudeUsage {
+  state: ClaudeUsageState;
+  capturedAt: number | null; // unix seconds; null — показаний не было ни разу
+  error: string | null; // причина деградации
+  windows: {
+    fiveHour: ClaudeUsageWindow | null;
+    sevenDay: ClaudeUsageWindow | null;
+  };
+}
+
 // SSE-события (безымянные message-события {type, data}).
 export type StreamEvent =
   | { type: "snapshot"; data: HostState[] }
   | { type: "host_update"; data: HostState }
-  | { type: "host_remove"; data: { id: string } };
+  | { type: "host_remove"; data: { id: string } }
+  | { type: "claude_usage"; data: ClaudeUsage };
 
 // Settings / CRUD.
 export type DataSourceMode = "command" | "socket"; // CLI herdr vs прямой unix-сокет

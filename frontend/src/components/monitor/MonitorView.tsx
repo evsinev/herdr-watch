@@ -1,8 +1,16 @@
-import type { HostState } from "@/lib/types";
+import type { ClaudeUsage, HostState } from "@/lib/types";
 import { sortHosts } from "@/lib/sort";
 import { HostCard } from "./HostCard";
 
-export function MonitorView({ hosts }: { hosts: Map<string, HostState> }) {
+export function MonitorView({
+  hosts,
+  usage,
+  localHosts,
+}: {
+  hosts: Map<string, HostState>;
+  usage: ClaudeUsage | null;
+  localHosts: Set<string>;
+}) {
   const sorted = sortHosts([...hosts.values()]);
 
   return (
@@ -15,7 +23,9 @@ export function MonitorView({ hosts }: { hosts: Map<string, HostState> }) {
           — no hosts · waiting for stream —
         </div>
       ) : (
-        sorted.map((h) => <HostCard key={h.id} host={h} />)
+        sorted.map((h) => (
+          <HostCard key={h.id} host={h} usage={localHosts.has(h.id) ? usage : null} />
+        ))
       )}
     </div>
   );

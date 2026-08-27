@@ -7,9 +7,24 @@ info:
 servers:
 - url: /
 tags:
+- name: Claude usage
+  description: Квота подписки Claude (5-часовое и недельное окна)
 - name: Snapshot
   description: Read-only снапшот состояния агентов (v1)
 paths:
+  /api/claude-usage:
+    get:
+      tags:
+      - Claude usage
+      summary: Текущая квота Claude
+      description: Последний снапшот квоты. Если хук не установлен — state = NOT_CONFIGURED.
+      responses:
+        "200":
+          description: успех
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClaudeUsage"
   /api/servers:
     get:
       tags:
@@ -145,8 +160,89 @@ paths:
             application/json;charset=UTF-8:
               schema:
                 $ref: "#/components/schemas/SnapshotError"
+  /api/v1/snapshot/usage:
+    get:
+      tags:
+      - Snapshot
+      summary: Квота подписки Claude
+      description: "Утилизация 5-часового и недельного окон (§9). Окно, которое не\
+        \ отчиталось, в массив не попадает. ETag = \"usage-<capturedAt>\"."
+      parameters:
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+      responses:
+        "200":
+          description: успех
+          content:
+            application/json;charset=UTF-8:
+              schema:
+                $ref: "#/components/schemas/SnapshotUsage"
+        "304":
+          description: If-None-Match совпал с текущим ETag; тело отсутствует
+        "503":
+          description: сервис не завершил первичную инициализацию
+          content:
+            application/json;charset=UTF-8:
+              schema:
+                $ref: "#/components/schemas/SnapshotError"
 components:
   schemas:
+    ClaudeUsage:
+      description: Квота подписки Claude (аккаунт целиком)
+      required:
+      - state
+      - windows
+      type: object
+      properties:
+        state:
+          description: NOT_CONFIGURED | OK | STALE
+          type: string
+          allOf:
+          - $ref: "#/components/schemas/State"
+        capturedAt:
+          format: int64
+          description: "unix-время снятия показаний; null, если записи никогда не\
+            \ было"
+          type: integer
+        error:
+          description: "причина деградации; null, когда её нет"
+          type: string
+        windows:
+          description: окна квоты; каждое может быть null (не отчитывалось)
+          type: object
+          allOf:
+          - $ref: "#/components/schemas/ClaudeUsageWindows"
+    ClaudeUsageWindow:
+      description: Одно окно квоты
+      required:
+      - usedPercent
+      - resetsAt
+      type: object
+      properties:
+        usedPercent:
+          format: int32
+          description: "утилизация, целые проценты 0..100"
+          type: integer
+        resetsAt:
+          format: int64
+          description: unix-время сброса окна
+          type: integer
+    ClaudeUsageWindows:
+      description: Окна квоты; null = окно не отчитывалось
+      type: object
+      properties:
+        fiveHour:
+          description: 5-часовое сессионное окно
+          type: object
+          allOf:
+          - $ref: "#/components/schemas/ClaudeUsageWindow"
+        sevenDay:
+          description: недельное окно
+          type: object
+          allOf:
+          - $ref: "#/components/schemas/ClaudeUsageWindow"
     HostRequest:
       type: object
       properties:
@@ -435,6 +531,63 @@ components:
           description: "смещение timeZone в секундах на момент serverEpoch, с учёт\
             ом DST"
           type: integer
+    SnapshotUsage:
+      description: Квота подписки Claude (аккаунт целиком)
+      required:
+      - protocolVersion
+      - state
+      - severityCode
+      - capturedAt
+      - windows
+      type: object
+      properties:
+        protocolVersion:
+          format: int32
+          description: "версия контракта, сейчас 1"
+          type: integer
+        state:
+          description: OK | STALE | NOT_CONFIGURED
+          type: string
+        severityCode:
+          format: int32
+          description: "0 неизвестно/не настроено, 1 ok, 2 warning, 3 critical, 4\
+            \ exhausted"
+          type: integer
+        capturedAt:
+          format: int64
+          description: "unix-время снятия показаний; 0, если показаний не было"
+          type: integer
+        windows:
+          description: "по записи на каждое отчитавшееся окно; пустой массив допус\
+            тим, null — нет"
+          type: array
+          items:
+            $ref: "#/components/schemas/SnapshotUsageWindow"
+    SnapshotUsageWindow:
+      description: Одно окно квоты
+      required:
+      - type
+      - usedPercent
+      - resetsAt
+      type: object
+      properties:
+        type:
+          description: five_hour | seven_day
+          type: string
+        usedPercent:
+          format: int32
+          description: "утилизация, целые проценты 0..100"
+          type: integer
+        resetsAt:
+          format: int64
+          description: unix-время сброса окна
+          type: integer
+    State:
+      enum:
+      - NOT_CONFIGURED
+      - OK
+      - STALE
+      type: string
     StreamEvent:
       type: object
       properties:

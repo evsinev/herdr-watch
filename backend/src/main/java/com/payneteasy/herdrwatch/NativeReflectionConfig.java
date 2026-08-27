@@ -12,6 +12,8 @@ import com.payneteasy.herdrwatch.snapshot.SnapshotResponseCompact;
 import com.payneteasy.herdrwatch.snapshot.SnapshotResponseFull;
 import com.payneteasy.herdrwatch.snapshot.SnapshotResponseStatus;
 import com.payneteasy.herdrwatch.snapshot.SnapshotTime;
+import com.payneteasy.herdrwatch.snapshot.SnapshotUsage;
+import com.payneteasy.herdrwatch.usage.ClaudeUsage;
 
 import io.quarkus.runtime.annotations.RegisterForReflection;
 
@@ -42,6 +44,12 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
             SnapshotResponseStatus.class,
             SnapshotTime.class,
             SnapshotError.class,
+            SnapshotUsage.class,
+            SnapshotUsage.Window.class,
+            ClaudeUsage.class,
+            ClaudeUsage.Window.class,
+            ClaudeUsage.Windows.class,
+            ClaudeUsage.State.class,
         })
 public class NativeReflectionConfig {
 }

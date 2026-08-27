@@ -9,6 +9,7 @@ import com.payneteasy.herdrwatch.snapshot.SnapshotResponseCompact;
 import com.payneteasy.herdrwatch.snapshot.SnapshotResponseFull;
 import com.payneteasy.herdrwatch.snapshot.SnapshotResponseStatus;
 import com.payneteasy.herdrwatch.snapshot.SnapshotTime;
+import com.payneteasy.herdrwatch.snapshot.SnapshotUsage;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.DefaultValue;
@@ -148,6 +149,41 @@ public class SnapshotResource {
                 now.getZone().getId(),
                 now.getOffset().getTotalSeconds());
         return Response.ok(body).type(JSON).header(HttpHeaders.DATE, httpDate()).build();
+    }
+
+    @GET
+    @Path("/usage")
+    @Operation(summary = "Квота подписки Claude",
+            description = "Утилизация 5-часового и недельного окон (§9). Окно, которое не "
+                    + "отчиталось, в массив не попадает. ETag = \"usage-<capturedAt>\".")
+    @APIResponse(responseCode = "200", description = "успех",
+            content = @Content(schema = @Schema(implementation = SnapshotUsage.class)))
+    @APIResponse(responseCode = "304", description = "If-None-Match совпал с текущим ETag; тело отсутствует")
+    @APIResponse(responseCode = "503", description = "сервис не завершил первичную инициализацию",
+            content = @Content(schema = @Schema(implementation = SnapshotError.class)))
+    public Response usage(@HeaderParam("If-None-Match") String ifNoneMatch) {
+        if (!readiness.isReady()) return notReady();
+
+        SnapshotUsage body = SnapshotProjection.projectUsage(PROTOCOL_VERSION, registry.claudeUsage());
+        // Валидатор — время снятия показаний: тело меняется ровно тогда, когда появляется
+        // новая запись хука (§3.10). Клиент, опрашивающий чаще, чем идут показания,
+        // получает 304 без тела — а это здесь обычный случай.
+        String etag = "\"usage-" + body.capturedAt() + "\"";
+
+        if (etag.equals(ifNoneMatch)) {
+            return Response.status(Response.Status.NOT_MODIFIED)
+                    .header(HttpHeaders.ETAG, etag)
+                    .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                    .header(HttpHeaders.DATE, httpDate())
+                    .build();
+        }
+
+        return Response.ok(body)
+                .type(JSON)
+                .header(HttpHeaders.ETAG, etag)
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header(HttpHeaders.DATE, httpDate())
+                .build();
     }
 
     // --- helpers ---

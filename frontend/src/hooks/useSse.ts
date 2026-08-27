@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
-import type { HostState, StreamEvent } from "@/lib/types";
+import type { ClaudeUsage, HostState, StreamEvent } from "@/lib/types";
+import { getClaudeUsage } from "@/lib/api";
 
 export interface SseState {
   hosts: Map<string, HostState>;
+  /** Квота Claude — свойство аккаунта, поэтому лежит РЯДОМ с картой хостов, а не в ней. */
+  usage: ClaudeUsage | null;
   connected: boolean;
 }
 
@@ -13,12 +16,19 @@ export interface SseState {
  */
 export function useSse(): SseState {
   const [hosts, setHosts] = useState<Map<string, HostState>>(new Map());
+  const [usage, setUsage] = useState<ClaudeUsage | null>(null);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     const es = new EventSource("/api/stream");
 
-    es.onopen = () => setConnected(true);
+    es.onopen = () => {
+      setConnected(true);
+      // claude_usage приходит только при изменении — стартовое значение берём по REST.
+      getClaudeUsage()
+        .then(setUsage)
+        .catch(() => {});
+    };
     es.onerror = () => setConnected(false); // авто-reconnect встроен в EventSource
 
     es.onmessage = (e) => {
@@ -33,6 +43,8 @@ export function useSse(): SseState {
       } else if (ev.type === "host_update") {
         const h = ev.data;
         setHosts((prev) => new Map(prev).set(h.id, h));
+      } else if (ev.type === "claude_usage") {
+        setUsage(ev.data);
       } else if (ev.type === "host_remove") {
         const id = ev.data.id;
         setHosts((prev) => {
@@ -46,5 +58,5 @@ export function useSse(): SseState {
     return () => es.close();
   }, []);
 
-  return { hosts, connected };
+  return { hosts, usage, connected };
 }

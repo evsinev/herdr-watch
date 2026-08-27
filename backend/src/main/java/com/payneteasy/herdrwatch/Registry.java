@@ -5,6 +5,7 @@ import com.payneteasy.herdrwatch.model.Model.Health;
 import com.payneteasy.herdrwatch.model.Model.WorkspaceInfo;
 import com.payneteasy.herdrwatch.model.Model.AgentInfo;
 import com.payneteasy.herdrwatch.model.Model.StreamEvent;
+import com.payneteasy.herdrwatch.usage.ClaudeUsage;
 
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.operators.multi.processors.BroadcastProcessor;
@@ -94,6 +95,28 @@ public class Registry {
         if (hosts.remove(id) != null) {
             emit("host_remove", Map.of("id", id));
         }
+    }
+
+    /**
+     * Квота подписки Claude. Свойство аккаунта, а не хоста, поэтому лежит рядом с
+     * картой хостов, а не в ней. volatile: пишет планировщик, читают HTTP-треды.
+     */
+    private volatile ClaudeUsage claudeUsage = ClaudeUsage.notConfigured();
+
+    /**
+     * Применяем свежий снапшот квоты. Неизменившийся снапшот НЕ рассылаем
+     * (спека: «Unchanged data») — читатель тикает чаще, чем двигаются цифры,
+     * а тик без изменений не должен ни будить клиентов, ни двигать sequence.
+     */
+    public void updateClaudeUsage(ClaudeUsage usage) {
+        if (usage == null || usage.equals(claudeUsage)) return;
+        claudeUsage = usage;
+        emit("claude_usage", usage);
+    }
+
+    /** Текущая квота — для REST и Snapshot API (для тех, кто не держит SSE). */
+    public ClaudeUsage claudeUsage() {
+        return claudeUsage;
     }
 
     /** Полный снапшот для только что подключившегося SSE-клиента. */
