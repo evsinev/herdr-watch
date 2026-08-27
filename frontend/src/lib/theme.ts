@@ -36,6 +36,23 @@ export const FLAG = {
   prunable: { color: "#EF9F27", label: "prunable" },
 } as const;
 
+/**
+ * Полосы утилизации квоты Claude. ЗЕРКАЛО backend `usage/UsageSeverity.java`
+ * (severityCode в Snapshot API) — значения обязаны совпадать, правим парой.
+ */
+export const USAGE_BANDS = {
+  warnAt: 70,
+  criticalAt: 90,
+  exhaustedAt: 100,
+} as const;
+
+/** Цвет полосы квоты — из тех же токенов статусов, без новых hex'ов. */
+export function usageColor(usedPercent: number): string {
+  if (usedPercent >= USAGE_BANDS.criticalAt) return STATUS.blocked.color;
+  if (usedPercent >= USAGE_BANDS.warnAt) return STATUS.working.color;
+  return STATUS.idle.color;
+}
+
 /** #rrggbb + alpha → rgba() (helper hex() из design-logic.js). */
 export function hex(color: string, alpha: number): string {
   const c = color.replace("#", "");

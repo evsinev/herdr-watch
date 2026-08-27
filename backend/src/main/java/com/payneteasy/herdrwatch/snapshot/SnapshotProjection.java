@@ -5,6 +5,8 @@ import com.payneteasy.herdrwatch.model.Model.Health;
 import com.payneteasy.herdrwatch.model.Model.HostState;
 import com.payneteasy.herdrwatch.model.Model.WorkspaceInfo;
 import com.payneteasy.herdrwatch.model.Model.WorktreeInfo;
+import com.payneteasy.herdrwatch.usage.ClaudeUsage;
+import com.payneteasy.herdrwatch.usage.UsageSeverity;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -119,6 +121,34 @@ public final class SnapshotProjection {
 
     public static SnapshotAgentStatus toStatus(SnapshotAgent a) {
         return new SnapshotAgentStatus(a.host(), a.project(), a.statusCode(), a.hostStale());
+    }
+
+    // --- квота Claude (§9, дизайн D8) ---
+
+    /**
+     * Проекция внутренней модели квоты в контрактную. Здесь и только здесь снимается
+     * коллизия D6 и §3.4: null-окно ПРОПУСКАЕТСЯ в массиве (не ноль и не null),
+     * неизвестное {@code capturedAt} становится 0. Полоса — из общего
+     * {@link UsageSeverity}, того же, что задаёт цвета в UI.
+     */
+    public static SnapshotUsage projectUsage(int protocolVersion, ClaudeUsage usage) {
+        ClaudeUsage u = usage != null ? usage : ClaudeUsage.notConfigured();
+        List<SnapshotUsage.Window> windows = new ArrayList<>(2);
+        if (u.windows() != null) {
+            addWindow(windows, "five_hour", u.windows().fiveHour());
+            addWindow(windows, "seven_day", u.windows().sevenDay());
+        }
+        return new SnapshotUsage(
+                protocolVersion,
+                u.state().name(),
+                UsageSeverity.of(u),
+                u.capturedAt() != null ? u.capturedAt() : 0L,
+                List.copyOf(windows));
+    }
+
+    private static void addWindow(List<SnapshotUsage.Window> out, String type, ClaudeUsage.Window w) {
+        if (w == null) return;   // не отчиталось — записи нет вовсе (§3.4)
+        out.add(new SnapshotUsage.Window(type, w.usedPercent(), w.resetsAt()));
     }
 
     // --- статусы (§3.7) ---

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Maximize, Minimize } from "lucide-react";
-import type { HostState } from "@/lib/types";
+import type { ClaudeUsage, HostState } from "@/lib/types";
 import type { CompactLabel } from "@/lib/prefs";
 import { compactCards } from "@/lib/sort";
 import { hex } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { useFullscreen } from "@/hooks/useFullscreen";
+import { UsageTile, hasUsage } from "@/components/UsageGauge";
 
 const GAP = 14;
 
@@ -38,11 +39,13 @@ const clamp = (min: number, v: number, max: number) => Math.max(min, Math.min(ma
  */
 export function CompactView({
   hosts,
+  usage,
   label,
   forceFull = false,
   onExitFull,
 }: {
   hosts: Map<string, HostState>;
+  usage: ClaudeUsage | null;
   label: CompactLabel;
   forceFull?: boolean;
   onExitFull?: () => void;
@@ -92,9 +95,14 @@ export function CompactView({
     else void document.documentElement.requestFullscreen().catch(() => {});
   }
 
-  const fill = full && cards.length > 0 && size.w > 0 && size.h > 0;
-  const cols = fill ? bestColumns(cards.length, size.w, size.h, GAP) : 0;
-  const rows = cols ? Math.ceil(cards.length / cols) : 0;
+  // Квота занимает такую же ячейку, как карточка агента, — значит и в раскладку
+  // она входит наравне с ними, иначе последняя строка съезжает.
+  const showQuota = hasUsage(usage);
+  const tiles = cards.length + (showQuota ? 1 : 0);
+
+  const fill = full && tiles > 0 && size.w > 0 && size.h > 0;
+  const cols = fill ? bestColumns(tiles, size.w, size.h, GAP) : 0;
+  const rows = cols ? Math.ceil(tiles / cols) : 0;
 
   // In fullscreen, scale card text to the cell size (smaller side drives it, so text fits).
   let nameSize = 0;
@@ -151,7 +159,7 @@ export function CompactView({
             : { gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))" }
         }
       >
-        {cards.length === 0 ? (
+        {tiles === 0 ? (
           <div className="col-span-full py-24 text-center font-mono text-[13px] text-muted-2">
             — no agents —
           </div>
@@ -196,6 +204,17 @@ export function CompactView({
               </div>
             );
           })
+        )}
+        {showQuota && (
+          // Последней плиткой — место под неё есть всегда, и цифры читаются издалека.
+          <UsageTile
+            usage={usage}
+            full={full}
+            fill={fill}
+            nameSize={nameSize}
+            hostSize={hostSize}
+            taskSize={taskSize}
+          />
         )}
       </div>
     </div>

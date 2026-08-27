@@ -292,6 +292,7 @@ SSH, so it reads the herdr session of the user who launched herdr-watch.
 |---|---|---|
 | `GET` | `/api/stream` | SSE. First a `snapshot` (all hosts), then `host_update` / `host_remove` deltas. |
 | `GET` | `/api/servers` | Host list with config + live health (drives the Settings table). |
+| `GET` | `/api/claude-usage` | Current Claude subscription quota (see [Claude quota gauge](#claude-quota-gauge)). |
 | `POST` | `/api/servers` | Add a host, connect it if enabled. |
 | `PUT` | `/api/servers/{id}` | Edit a host (stop + start with new params). |
 | `DELETE` | `/api/servers/{id}` | Remove a host, disconnect it, drop its card. |
@@ -305,7 +306,9 @@ interface's own voice, e.g.:
 ```
 
 SSE events are plain `message` events carrying `{ "type": ..., "data": ... }`;
-the frontend switches on `type` (`snapshot` | `host_update` | `host_remove`).
+the frontend switches on `type` (`snapshot` | `host_update` | `host_remove` |
+`claude_usage` | `ping`). Unknown types are ignored, so a client written before
+`claude_usage` existed keeps working unchanged.
 
 ---
 
@@ -316,6 +319,73 @@ the frontend switches on `type` (`snapshot` | `host_update` | `host_remove`).
 | `CONNECTED` | green | frames flowing, `herdr` responding |
 | `DEGRADED` | amber | SSH alive but `herdr` returned no data |
 | `UNREACHABLE` | grey | SSH down / reconnecting — card dims, last-known state stays visible |
+
+---
+
+## Claude quota gauge
+
+Shows how much of the Claude subscription's **5-hour session window** and
+**weekly window** is used up, with reset times, inline on the **local** host's
+card — so a stall at 100 % is something you see coming rather than discover.
+
+The figures belong to the Claude **account**, not to the machine, and the gauge
+says so. Remote hosts never show one.
+
+### How the numbers get in
+
+Not over the network, and with no credential anywhere. Claude Code already hands
+the quota to whatever `statusLine` command you configure. herdr-watch ships a
+**pass-through hook**: it records the numbers, then forwards stdin untouched to
+your real statusline command. Your own script is not modified.
+
+Install by wrapping your existing `statusLine` command in `~/.claude/settings.json`:
+
+```json
+"statusLine": {
+  "type": "command",
+  "command": "python3 /path/to/herdr-watch/scripts/herdr-watch-statusline-hook.py python3 ~/.claude/statusline.py"
+}
+```
+
+Everything after the hook's own path is your command, run exactly as before. If
+you have no statusline yet, `... hook.py echo ""` records the quota and prints
+nothing.
+
+**To remove it:** delete the wrapper prefix from that one line, and (optionally)
+`rm ~/.config/herdr-watch/claude-usage.json`. Nothing else persists.
+
+The hook is on an interactive path, so it is built to be invisible: any failure —
+unwritable path, malformed payload, no quota in the payload — is swallowed, stdin
+is still forwarded, and the exit status is your command's. It never writes to
+stdout itself. Cost: one extra Python start (~30 ms) per statusline refresh.
+
+### Staleness is the normal state, not a bug
+
+**The numbers only advance while a Claude Code session is running.** With no
+session open, the newest reading simply ages. herdr-watch shows the capture time
+next to every reading and dims the gauge once it passes
+`herdr-watch.claude-usage.stale-after` (default 15 min) — old figures are still
+shown, marked stale, rather than silently passing for current.
+
+Before the hook is installed nothing is rendered at all, and the API reports
+`NOT_CONFIGURED`. That is not an error state.
+
+### Configuration
+
+```yaml
+herdr-watch:
+  claude-usage:
+    state-file: ~/.config/herdr-watch/claude-usage.json   # what the hook writes
+    poll-interval: 5s                                     # mtime check; parses only on change
+    stale-after: 15m                                      # age at which a reading is marked stale
+```
+
+Colour bands (70 % warning, 90 % critical) live in `usage/UsageSeverity.java` and
+are mirrored in `frontend/src/lib/theme.ts` — change them as a pair.
+
+Embedded clients that cannot hold an SSE connection can poll
+`GET /api/v1/snapshot/usage` instead; see §4a of
+`docs/api/herdr-watch-snapshot-protocol.md`.
 
 ---
 
@@ -376,6 +446,7 @@ herdr-watch/
 │   └── mvnw     Maven Wrapper (3.9.9) — use if system Maven < 3.8.6
 ├── frontend/    Vite + React + TypeScript + Tailwind + shadcn/ui
 ├── handoff/     design mockups, original spec (CLAUDE_CODE_INSTRUCTIONS.md), prompt & compact-screen handoff — reference only
+├── scripts/     herdr-watch-statusline-hook.py (Claude quota capture) + maintenance helpers
 ├── README.md
 └── CLAUDE.md
 ```
@@ -389,6 +460,7 @@ herdr-watch/
 - **Tests:** backend `cd backend && ./mvnw test` (JUnit + `@QuarkusTest`; the `test`
   profile disables Quinoa and all bootstrap hosts, so no ssh/herdr is spawned).
   Frontend `cd frontend && npm test` (Vitest + Testing Library). Both run in CI.
+  The statusline hook has its own suite: `python3 scripts/test_herdr_watch_statusline_hook.py`.
 - The frontend is driven entirely by SSE + REST — no hardcoded data.
 - Keep the Source abstraction and the one-ssh-connection-per-host model intact;
   a realtime source would slot in behind the same interface.

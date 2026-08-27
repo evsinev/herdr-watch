@@ -64,6 +64,14 @@ herdr-watch:
     chat-id: ${TELEGRAM_CHAT_ID:}
     notify-blocked: true
     notify-done: true
+  # Квота подписки Claude: state-файл пишет statusline-хук
+  # (scripts/herdr-watch-statusline-hook.py), мы только читаем его по mtime.
+  # poll-interval подставляется в @Scheduled(every=…), поэтому значение обязано быть
+  # здесь, а не только в @WithDefault маппинга.
+  claude-usage:
+    state-file: ~/.config/herdr-watch/claude-usage.json
+    poll-interval: 5s
+    stale-after: 15m
   # Дефолт для СБОРКИ-релиза (prod): один локальный хост через socket API herdr —
   # без bash/jq, кросс-платформенно (в т.ч. Windows: Java AF_UNIX SocketChannel).
   # Личный fleet разработчика вынесен в профиль "%dev" (ниже), чтобы не попадать в

@@ -4,6 +4,7 @@ import { MonitorView } from "@/components/monitor/MonitorView";
 import { CompactView } from "@/components/compact/CompactView";
 import { SettingsView } from "@/components/settings/SettingsView";
 import { useSse } from "@/hooks/useSse";
+import { useLocalHosts } from "@/hooks/useLocalHosts";
 import { loadCompactLabel, saveCompactLabel } from "@/lib/prefs";
 
 export type View = "monitor" | "compact" | "settings";
@@ -16,7 +17,9 @@ export default function App() {
   const [view, setView] = useState<View>(initialFull ? "compact" : "monitor");
   const [forceFull, setForceFull] = useState(initialFull);
   const [compactLabel, setCompactLabel] = useState(loadCompactLabel);
-  const { hosts, connected } = useSse();
+  const { hosts, usage, connected } = useSse();
+  // Квота — свойство аккаунта: рисуем её только на карточке локального хоста.
+  const localHosts = useLocalHosts([...hosts.keys()]);
 
   useEffect(() => saveCompactLabel(compactLabel), [compactLabel]);
 
@@ -54,10 +57,13 @@ export default function App() {
     <div className="min-h-screen bg-page text-ink">
       {showHeader && <Header view={view} onView={onView} hosts={hosts} offline={offline} />}
       <main>
-        {view === "monitor" && <MonitorView hosts={hosts} />}
+        {view === "monitor" && (
+          <MonitorView hosts={hosts} usage={usage} localHosts={localHosts} />
+        )}
         {view === "compact" && (
           <CompactView
             hosts={hosts}
+            usage={usage}
             label={compactLabel}
             forceFull={forceFull}
             onExitFull={exitFull}

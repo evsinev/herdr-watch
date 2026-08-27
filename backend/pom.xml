@@ -50,6 +50,12 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-config-yaml</artifactId>
         </dependency>
+        <!-- Scheduler: периодическая проверка mtime state-файла с квотой Claude
+             (usage/ClaudeUsageReader). Native-совместимо. -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-scheduler</artifactId>
+        </dependency>
         <!-- Health checks: /q/health, /q/health/live, /q/health/ready -->
         <dependency>
             <groupId>io.quarkus</groupId>

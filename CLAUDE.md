@@ -19,6 +19,9 @@ LocalSource (bash -lc, no ssh) ─┐
 SshSource   (1 ssh conn/host) ──┼─► Registry (in-memory, Mutiny broadcast) ─► SSE /api/stream ─► React UI
                                  └►                                            REST /api/servers (CRUD, hot-reconnect)
                                      Registry fires CDI FrameApplied ─► TelegramNotifier (blocked/done → Telegram)
+
+statusline hook (Claude Code) ─► ~/.config/herdr-watch/claude-usage.json ─► ClaudeUsageReader (mtime poll)
+                                                                              └─► Registry (claude_usage)
 ```
 
 - **Sources** (`backend/.../source/`): `Source` interface + `AbstractHerdrSource`
@@ -30,9 +33,18 @@ SshSource   (1 ssh conn/host) ──┼─► Registry (in-memory, Mutiny broadc
   `BroadcastProcessor`); emits `snapshot` / `host_update` / `host_remove`. Also fires
   a CDI `FrameApplied` event per CONNECTED frame → `TelegramNotifier` diffs agent
   statuses and notifies on transition to `blocked`/`done`.
+- **Claude quota** (`usage/`): `ClaudeUsageReader` (`@Scheduled` mtime poll of the
+  state file; parses only when mtime changed) → `Registry.updateClaudeUsage` →
+  `claude_usage` SSE event. `ClaudeUsage` is the internal model (nullable windows,
+  `NOT_CONFIGURED`/`OK`/`STALE`); `UsageSeverity` holds the 70/90 % bands shared with
+  the UI and with `severityCode` in the Snapshot API. The file is written by
+  `scripts/herdr-watch-statusline-hook.py`, a **pass-through** `statusLine` wrapper —
+  it must never break or delay the operator's statusline (any failure is swallowed,
+  stdin always forwarded, nothing on stdout).
 - **HTTP** (`http/`): `StreamResource` (SSE; `onOverflow().drop()` so slow clients
   don't crash the broadcast), `ServersResource` (GET enriched config+health, POST/PUT/
-  DELETE with field-level validation).
+  DELETE with field-level validation), `ClaudeUsageResource` (`GET /api/claude-usage`),
+  `SnapshotResource` (Snapshot API v1, incl. `GET /api/v1/snapshot/usage`).
 - **Config/persistence**: `HostsConfig` (`@ConfigMapping`, bootstrap hosts from
   `application.yaml`) merged with a writable state file `~/.config/herdr-watch/hosts.json`
   by `HostStore` (state wins; tombstones for removed bootstrap hosts). `TelegramConfig`
@@ -62,6 +74,10 @@ SshSource   (1 ssh conn/host) ──┼─► Registry (in-memory, Mutiny broadc
   in `frontend/src/lib/theme.ts` — single source; reuse them, don't duplicate hexes.
 - `herdr` here (0.7.4) **emits JSON without `--json`** — the remote frame command must
   NOT pass `--json`.
+- Claude quota **only advances while a Claude Code session is running**. With no session
+  open the newest reading just ages — model that as `STALE` with a visible `capturedAt`,
+  never as 0 %. An absent window is `null`/omitted, never zero. The Snapshot API forbids
+  `null` (§3.4), so `SnapshotProjection.projectUsage` omits absent windows from the array.
 - Secrets (Telegram token/chat id) come from **env only** (`TELEGRAM_*`), never the
   state file or UI.
 - Native: any type serialized via a hand-rolled `ObjectMapper` or reachable only via
@@ -81,12 +97,19 @@ SshSource   (1 ssh conn/host) ──┼─► Registry (in-memory, Mutiny broadc
 
 ## Key files
 
-Backend: `source/{Source,AbstractHerdrSource,SshSource,LocalSource,SourceManager}.java`,
+Backend: `usage/{ClaudeUsage,ClaudeUsageConfig,ClaudeUsageReader,UsageSeverity}.java`,
+`source/{Source,AbstractHerdrSource,SshSource,LocalSource,SourceManager}.java`,
 `Registry.java`, `FrameApplied.java`, `HostStore.java`, `HostsConfig.java`,
-`http/{StreamResource,ServersResource}.java`, `model/{Model,HostDef}.java`,
+`http/{StreamResource,ServersResource,ClaudeUsageResource,SnapshotResource}.java`,
+`model/{Model,HostDef}.java`,
 `TelegramConfig.java`, `notify/TelegramNotifier.java`, `NativeReflectionConfig.java`,
-`src/main/resources/application.yaml`, `pom.xml` (profiles `uber`, `native`).
+`src/main/resources/application.yaml`, `pom.xml` (profiles `uber`, `native`;
+`quarkus-scheduler` drives the quota poll).
 
-Frontend: `App.tsx`, `components/Header.tsx`, `components/{monitor,compact,settings}/*`,
-`hooks/useSse.ts`, `lib/{types,theme,sort,api,prefs}.ts`, `tailwind.config.js`,
+Hook: `scripts/herdr-watch-statusline-hook.py` + `scripts/test_herdr_watch_statusline_hook.py`
+(`python3 scripts/test_herdr_watch_statusline_hook.py`).
+
+Frontend: `App.tsx`, `components/Header.tsx`, `components/UsageGauge.tsx`,
+`components/{monitor,compact,settings}/*`, `hooks/{useSse,useLocalHosts}.ts`,
+`lib/{types,theme,sort,api,prefs}.ts`, `tailwind.config.js`,
 `vite.config.ts` (proxy `/api` → :8080 for standalone Vite).
