@@ -75,17 +75,19 @@ class HookTest(unittest.TestCase):
         self.assertIn("five_hour", rec)
         self.assertNotIn("seven_day", rec)   # absent, never a fabricated zero
 
-    def test_incomplete_window_is_omitted(self):
+    def test_incomplete_five_hour_makes_the_whole_reading_unusable(self):
+        # Без resets_at время сброса выдумывать нельзя, а без пригодного five_hour
+        # показание неполное — такую запись мы не принимаем вовсе (см. windows_of).
         payload = json.dumps({
             "rate_limits": {
                 "five_hour": {"used_percentage": 27},                    # no resets_at
                 "seven_day": {"used_percentage": 24, "resets_at": 1788206400},
             }
         }).encode()
-        run(payload, self.state)
-        rec = self.read_state()
-        self.assertNotIn("five_hour", rec)   # no placeholder reset time
-        self.assertIn("seven_day", rec)
+        out, _, rc = run(payload, self.state)
+        self.assertEqual(out, payload)
+        self.assertEqual(rc, 0)
+        self.assertFalse(os.path.exists(self.state))
 
     def test_no_rate_limits_leaves_previous_record_untouched(self):
         run(json.dumps(BOTH).encode(), self.state)
@@ -267,6 +269,48 @@ class HookTest(unittest.TestCase):
         run(json.dumps(BOTH).encode(), self.state)
 
         self.assertIsInstance(self.read_state()["capturedAt"], int)
+
+    # --- общий файл делят сессии Claude Code РАЗНЫХ версий ---
+
+    OLD_SHAPE = {
+        "session_id": "1b36bde1", "version": "2.1.245",
+        "rate_limits": {"seven_day": {"used_percentage": 20, "resets_at": 1788206400}},
+    }
+
+    def test_old_client_shape_is_ignored_entirely(self):
+        # Наблюдалось вживую: сессии 2.1.243/245/247 шлют rate_limits без five_hour,
+        # и их seven_day (7.0 / 20 / 26 / 29) не сходится ни с аккаунтным 34, ни между собой.
+        out, _, rc = run(json.dumps(self.OLD_SHAPE).encode(), self.state)
+
+        self.assertEqual(out, json.dumps(self.OLD_SHAPE).encode())
+        self.assertEqual(rc, 0)
+        self.assertFalse(os.path.exists(self.state), "неполное показание не должно создавать запись")
+
+    def test_old_client_cannot_overwrite_a_good_record(self):
+        # Ровно тот сценарий, из-за которого 5-часовой бар пропадал каждые 5 минут.
+        run(json.dumps(BOTH).encode(), self.state)
+        good = self.read_state()
+        before_mtime = self.mtime_ns()
+
+        run(json.dumps(self.OLD_SHAPE).encode(), self.state)
+
+        self.assertEqual(self.read_state(), good, "старая сессия не должна затирать хорошую запись")
+        self.assertEqual(self.mtime_ns(), before_mtime, "файл вообще не должен трогаться")
+
+    def test_a_newer_full_reading_still_wins(self):
+        run(json.dumps(BOTH).encode(), self.state)
+        run(json.dumps(self.OLD_SHAPE).encode(), self.state)      # шум от старой сессии
+        fresh = json.dumps({
+            "rate_limits": {
+                "five_hour": {"used_percentage": 12, "resets_at": 1787883600},
+                "seven_day": {"used_percentage": 34, "resets_at": 1788206400},
+            }
+        }).encode()
+        run(fresh, self.state)
+
+        rec = self.read_state()
+        self.assertEqual(rec["five_hour"]["used_percentage"], 12)
+        self.assertEqual(rec["seven_day"]["used_percentage"], 34)
 
     # --- transparency ---
 

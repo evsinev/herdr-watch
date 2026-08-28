@@ -19,3 +19,6 @@ tray-macos/*.app/
 docs/api/openapi.json
 
 .env
+
+# Python (scripts/)
+__pycache__/

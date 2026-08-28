@@ -30,7 +30,12 @@ written atomically (temp file in the same directory + rename), shape:
 
 A window absent from the payload is absent here too — never a zero and never a
 placeholder reset time. Figures are rounded to whole percents on the way in, so the
-file only ever holds integers. A payload with no usable window leaves the previous
+file only ever holds integers.
+
+A payload without a usable `five_hour` is ignored entirely: this file is shared by
+every Claude Code session on the machine, and older versions emit a `rate_limits`
+carrying only `seven_day` with values that disagree with the account's own figures.
+Leaving the record untouched beats letting a stale client overwrite a good reading. A payload with no usable window leaves the previous
 record untouched (normal before the session's first API response).
 
 The file is rewritten ONLY when the figures actually change, so `capturedAt` means
@@ -87,7 +92,16 @@ def window(raw):
 
 
 def windows_of(payload):
-    """The validated windows alone (no timestamp), or None when nothing is usable."""
+    """The validated windows alone (no timestamp), or None when this is not a usable reading.
+
+    A reading MUST carry `five_hour` to count. That is not fussiness — several Claude
+    Code sessions of DIFFERENT versions share this one file, and older ones emit
+    `rate_limits` with only `seven_day`, whose value agrees neither with the account
+    figure nor with each other (observed live: 7.0 / 20 / 26 / 29 against a true 34).
+    Accepting those lets an old session overwrite a good record on every tick — which
+    is exactly how the 5-hour bar kept vanishing. Requiring the window the old shape
+    never has filters them out without needing to track versions.
+    """
     if not isinstance(payload, dict):
         return None
     limits = payload.get("rate_limits")
@@ -98,7 +112,9 @@ def windows_of(payload):
         w = window(limits.get(name))
         if w is not None:
             out[name] = w
-    return out or None
+    if "five_hour" not in out:
+        return None          # неполное показание — прошлую запись не трогаем
+    return out
 
 
 def read_existing(path):

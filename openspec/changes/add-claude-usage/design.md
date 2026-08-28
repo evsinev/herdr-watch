@@ -116,9 +116,37 @@ so it does not belong in `~/.claude/`.
 
 **Atomicity:** write to a temporary file in the same directory, then `rename()`.
 On POSIX that is atomic, so a concurrent reader sees either the old or the new
-file, never a partial one. This also makes concurrent sessions safe — last writer
-wins, and since every session on one account reports the same account-level
-quota, that is benign rather than a lost update.
+file, never a partial one.
+
+~~This also makes concurrent sessions safe — last writer wins, and since every
+session on one account reports the same account-level quota, that is benign rather
+than a lost update.~~
+
+**Correction (2026-08-28): that second sentence was wrong, and it cost a bug.**
+Concurrent sessions are *not* necessarily the same **version** of Claude Code, and
+different versions do not report interchangeable data. Observed live on the
+reference machine — six sessions, one `refreshInterval` tick, one second apart:
+
+| session | version | `rate_limits` |
+|---|---|---|
+| `0fdc87bd` | 2.1.243 | `seven_day` 7.0 — **no `five_hour`** |
+| `1b36bde1` | 2.1.245 | `seven_day` 20 — **no `five_hour`** |
+| `0ef349ff` | 2.1.247 | `seven_day` 26 — **no `five_hour`** |
+| current | 2.1.250 | `five_hour` + `seven_day` 34 (matches the account API) |
+
+The older shape carries no five-hour window at all, and its `seven_day` agrees
+neither with the account figure nor between sessions. Last-writer-wins therefore let
+a stale client overwrite a good record on every tick, and the 5-hour bar vanished
+every five minutes.
+
+Atomicity was never the issue; **comparability of writers** was. The record is
+account-scoped state in one shared file, so the hook must decide *whether a writer is
+worth listening to*, not merely write safely. It now accepts a reading only when a
+usable `five_hour` is present and leaves the record untouched otherwise — the window
+the old shape never carries, used as the marker of a complete reading.
+
+`statusLine.refreshInterval` made the damage visible rather than causing it: before
+it, only event-driven fires happened, so the session being typed in usually won.
 
 **Record shape** — deliberately close to the payload, so the hook stays trivial:
 
