@@ -25,10 +25,26 @@ public record SnapshotUsage(
         int severityCode,
         @Schema(required = true, description = "unix-время снятия показаний; 0, если показаний не было")
         long capturedAt,
+        @Schema(required = true, description = "кто наблюдал показания: NONE | STATUSLINE | ACCOUNT_API")
+        String source,
         @Schema(required = true,
                 description = "по записи на каждое отчитавшееся окно; пустой массив допустим, null — нет")
-        List<Window> windows
+        List<Window> windows,
+        @Schema(required = true,
+                description = "помодельные недельные окна; пустой массив, если их не отдали")
+        List<ModelWindow> models
 ) {
+
+    /** Помодельное недельное окно. Набор моделей открыт — имя приходит как есть (§6). */
+    @Schema(name = "SnapshotUsageModelWindow", description = "Недельное окно, привязанное к модели")
+    public record ModelWindow(
+            @Schema(required = true, description = "имя модели, как его прислал сервер")
+            String model,
+            @Schema(required = true, description = "утилизация, целые проценты 0..100")
+            int usedPercent,
+            @Schema(required = true, description = "unix-время сброса окна")
+            long resetsAt
+    ) {}
 
     /** Одно окно квоты. Неотчитавшееся окно в массив не попадает вовсе (§3.4). */
     @Schema(name = "SnapshotUsageWindow", description = "Одно окно квоты")

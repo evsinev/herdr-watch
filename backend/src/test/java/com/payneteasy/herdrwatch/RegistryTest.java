@@ -7,6 +7,8 @@ import com.payneteasy.herdrwatch.model.Model.WorkspaceInfo;
 import com.payneteasy.herdrwatch.model.Model.StreamEvent;
 import com.payneteasy.herdrwatch.usage.ClaudeUsage;
 
+import com.payneteasy.herdrwatch.usage.UsageSource;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -85,13 +87,13 @@ class RegistryTest {
         Registry r = new Registry();
         List<StreamEvent> seen = subscribe(r);
 
-        ClaudeUsage first = ClaudeUsage.ok(1787797108L,
+        ClaudeUsage first = ClaudeUsage.ok(UsageSource.STATUSLINE, 1787797108L,
                 new ClaudeUsage.Window(27, 1787803200L),
-                new ClaudeUsage.Window(24, 1788206400L));
+                new ClaudeUsage.Window(24, 1788206400L), List.of());
         r.updateClaudeUsage(first);
-        r.updateClaudeUsage(ClaudeUsage.ok(1787797108L,      // равный по значению — тишина
+        r.updateClaudeUsage(ClaudeUsage.ok(UsageSource.STATUSLINE, 1787797108L,      // равный по значению — тишина
                 new ClaudeUsage.Window(27, 1787803200L),
-                new ClaudeUsage.Window(24, 1788206400L)));
+                new ClaudeUsage.Window(24, 1788206400L), List.of()));
         r.updateClaudeUsage(null);                            // и null тоже
 
         assertEquals(1, seen.size(), "неизменившийся снапшот повторно не рассылаем: " + seen);
@@ -103,7 +105,7 @@ class RegistryTest {
     @Test
     void claudeUsageChangeIsPublished() {
         Registry r = new Registry();
-        ClaudeUsage first = ClaudeUsage.ok(1787797108L, new ClaudeUsage.Window(27, 1787803200L), null);
+        ClaudeUsage first = ClaudeUsage.ok(UsageSource.STATUSLINE, 1787797108L, new ClaudeUsage.Window(27, 1787803200L), null, List.of());
         r.updateClaudeUsage(first);
 
         List<StreamEvent> seen = subscribe(r);
@@ -119,11 +121,77 @@ class RegistryTest {
         // §D5: начальный snapshot остаётся List<HostState> — иначе ломаются клиенты.
         Registry r = new Registry();
         r.register("h1", "host-1");
-        r.updateClaudeUsage(ClaudeUsage.ok(1787797108L, new ClaudeUsage.Window(27, 1787803200L), null));
+        r.updateClaudeUsage(ClaudeUsage.ok(UsageSource.STATUSLINE, 1787797108L, new ClaudeUsage.Window(27, 1787803200L), null, List.of()));
 
         List<HostState> handshake = r.snapshot();
         assertEquals(1, handshake.size());
         assertEquals("h1", handshake.get(0).id());
+    }
+
+    // --- два источника: побеждает более свежее наблюдение ---
+
+    private static ClaudeUsage reading(UsageSource source, long capturedAt, int fivePercent) {
+        return ClaudeUsage.ok(source, capturedAt,
+                new ClaudeUsage.Window(fivePercent, 1787803200L), null, List.of());
+    }
+
+    @Test
+    void freshestObservationWinsRegardlessOfSource() {
+        Registry r = new Registry();
+        r.updateClaudeUsage(reading(UsageSource.STATUSLINE, 2000L, 11));
+        r.updateClaudeUsage(reading(UsageSource.ACCOUNT_API, 3000L, 22));
+
+        assertEquals(UsageSource.ACCOUNT_API, r.claudeUsage().source());
+        assertEquals(22, r.claudeUsage().windows().fiveHour().usedPercent());
+    }
+
+    @Test
+    void anOlderSourceDoesNotOverwriteANewerOne() {
+        // Именно то, чего боимся под auto: pull ходит по интервалу, statusline по событиям,
+        // и опоздавшее показание не должно откатывать картинку назад.
+        Registry r = new Registry();
+        r.updateClaudeUsage(reading(UsageSource.STATUSLINE, 3000L, 33));
+
+        List<StreamEvent> seen = subscribe(r);
+        r.updateClaudeUsage(reading(UsageSource.ACCOUNT_API, 1000L, 99));
+
+        assertEquals(33, r.claudeUsage().windows().fiveHour().usedPercent());
+        assertEquals(UsageSource.STATUSLINE, r.claudeUsage().source());
+        assertTrue(seen.isEmpty(), "победитель не изменился — событий быть не должно: " + seen);
+    }
+
+    @Test
+    void aFailingSourceDoesNotSuppressTheHealthyOne() {
+        Registry r = new Registry();
+        r.updateClaudeUsage(reading(UsageSource.STATUSLINE, 3000L, 33));
+        // pull не смог: показаний нет вовсе (capturedAt == null)
+        r.updateClaudeUsage(ClaudeUsage.notConfigured(UsageSource.ACCOUNT_API));
+
+        assertEquals(ClaudeUsage.State.OK, r.claudeUsage().state());
+        assertEquals(UsageSource.STATUSLINE, r.claudeUsage().source());
+    }
+
+    @Test
+    void singleSourceBehavesExactlyAsBefore() {
+        Registry r = new Registry();
+        List<StreamEvent> seen = subscribe(r);
+
+        ClaudeUsage first = reading(UsageSource.STATUSLINE, 1000L, 11);
+        r.updateClaudeUsage(first);
+        r.updateClaudeUsage(reading(UsageSource.STATUSLINE, 1000L, 11));   // то же самое
+        r.updateClaudeUsage(reading(UsageSource.STATUSLINE, 2000L, 12));   // новое
+
+        assertEquals(2, seen.size(), "рассылаем только изменения: " + seen);
+        assertEquals(12, r.claudeUsage().windows().fiveHour().usedPercent());
+        assertEquals(first, seen.get(0).data());
+    }
+
+    @Test
+    void sourceIsNeverNull() {
+        Registry r = new Registry();
+        assertEquals(UsageSource.NONE, r.claudeUsage().source());
+        r.updateClaudeUsage(reading(UsageSource.ACCOUNT_API, 1000L, 5));
+        assertEquals(UsageSource.ACCOUNT_API, r.claudeUsage().source());
     }
 
     private static List<StreamEvent> subscribe(Registry r) {

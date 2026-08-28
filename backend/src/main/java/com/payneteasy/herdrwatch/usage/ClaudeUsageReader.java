@@ -95,7 +95,7 @@ public class ClaudeUsageReader {
 
         if (mtime == null) {
             // Файла нет: до установки хука — норма, после удаления — деградация.
-            if (parsed == null) return ClaudeUsage.notConfigured();
+            if (parsed == null) return ClaudeUsage.notConfigured(UsageSource.STATUSLINE);
             failure = "state file is gone: " + file;
             return parsed.stale(failure);
         }
@@ -111,12 +111,15 @@ public class ClaudeUsageReader {
                 // Частичных значений не публикуем: либо прошлый снапшот, либо «не настроено».
                 return parsed != null
                         ? parsed.stale(failure)
-                        : new ClaudeUsage(ClaudeUsage.State.NOT_CONFIGURED, null, failure,
-                                          new ClaudeUsage.Windows(null, null));
+                        : new ClaudeUsage(ClaudeUsage.State.NOT_CONFIGURED, UsageSource.STATUSLINE,
+                                          null, failure, new ClaudeUsage.Windows(null, null),
+                                          java.util.List.of());
             }
         }
 
-        if (failure != null) return parsed != null ? parsed.stale(failure) : ClaudeUsage.notConfigured();
+        if (failure != null) {
+            return parsed != null ? parsed.stale(failure) : ClaudeUsage.notConfigured(UsageSource.STATUSLINE);
+        }
 
         long age = now.getEpochSecond() - parsed.capturedAt();
         if (age > staleAfter.toSeconds()) {
@@ -148,9 +151,11 @@ public class ClaudeUsageReader {
         if (captured == null || !captured.canConvertToLong() || captured.longValue() <= 0) {
             throw new IOException("missing or invalid capturedAt");
         }
-        return ClaudeUsage.ok(captured.longValue(),
+        // Помодельных окон statusline не отдаёт вовсе — пустой список честнее пропуска.
+        return ClaudeUsage.ok(UsageSource.STATUSLINE, captured.longValue(),
                 window(root.get("five_hour")),
-                window(root.get("seven_day")));
+                window(root.get("seven_day")),
+                java.util.List.of());
     }
 
     /**
@@ -166,10 +171,9 @@ public class ClaudeUsageReader {
         JsonNode resets = n.get("resets_at");
         if (used == null || !used.isNumber()) return null;
         if (resets == null || !resets.isNumber()) return null;
-        double rawPercent = used.doubleValue();
+        Integer percent = Percents.toWhole(used.doubleValue());
         long resetsAt = (long) resets.doubleValue();
-        if (!Double.isFinite(rawPercent) || rawPercent < 0 || resetsAt <= 0) return null;
-        int percent = (int) Math.min(100, Math.round(rawPercent));
+        if (percent == null || resetsAt <= 0) return null;
         return new ClaudeUsage.Window(percent, resetsAt);
     }
 

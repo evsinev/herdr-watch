@@ -2,7 +2,11 @@ package com.payneteasy.herdrwatch.usage;
 
 import com.payneteasy.herdrwatch.usage.ClaudeUsage.State;
 
+import com.payneteasy.herdrwatch.usage.UsageSource;
+
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -218,11 +222,11 @@ class ClaudeUsageReaderTest {
 
     @Test
     void snapshotSeverityIsTheWorstReportedWindow() {
-        ClaudeUsage u = ClaudeUsage.ok(CAPTURED,
+        ClaudeUsage u = ClaudeUsage.ok(UsageSource.STATUSLINE, CAPTURED,
                 new ClaudeUsage.Window(27, FIVE_RESETS),
-                new ClaudeUsage.Window(95, SEVEN_RESETS));
+                new ClaudeUsage.Window(95, SEVEN_RESETS), List.of());
         assertEquals(UsageSeverity.CRITICAL, UsageSeverity.of(u));
-        assertEquals(UsageSeverity.UNKNOWN, UsageSeverity.of(ClaudeUsage.notConfigured()));
+        assertEquals(UsageSeverity.UNKNOWN, UsageSeverity.of(ClaudeUsage.none()));
     }
 
     /** Сдвигаем mtime, чтобы reader увидел изменение файла. */

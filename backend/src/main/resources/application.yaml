@@ -72,6 +72,23 @@ herdr-watch:
     state-file: ~/.config/herdr-watch/claude-usage.json
     poll-interval: 5s
     stale-after: 45m
+    # Откуда берём квоту: push (statusline-хук) | pull (аккаунт-API) | auto (оба).
+    # Дефолт push: ноль креденшлов и ноль исходящих запросов — это свойство не должно
+    # исчезать по умолчанию.
+    source: push
+    pull:
+      # Слать User-Agent Claude Code. Без него запросы летят в жёсткий rate-limit
+      # бакет, поэтому pull без этого флага не стартует вовсе. Отдельное решение —
+      # «включить pull» и «представляться Claude Code» это разные вещи.
+      impersonate-claude-cli: false
+      endpoint: https://api.anthropic.com/api/oauth/usage
+      keychain-service: "Claude Code-credentials"
+      credentials-file: ~/.claude/.credentials.json
+      # claude-cli-version: 2.1.250   # не задана — определяем по установленному Claude Code
+      poll-interval: 5m
+      backoff-floor: 1m
+      backoff-cap: 2h            # ОБЯЗАН превышать наказание ~1300 с, иначе не выберемся
+      retry-margin: 30s
   # Дефолт для СБОРКИ-релиза (prod): один локальный хост через socket API herdr —
   # без bash/jq, кросс-платформенно (в т.ч. Windows: Java AF_UNIX SocketChannel).
   # Личный fleet разработчика вынесен в профиль "%dev" (ниже), чтобы не попадать в

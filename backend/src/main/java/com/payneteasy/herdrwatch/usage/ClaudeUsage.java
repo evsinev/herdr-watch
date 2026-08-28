@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
+import java.util.List;
+
 /**
  * Снапшот квоты подписки Claude — то, что герой этой фичи отдаёт наружу
  * (SSE {@code claude_usage}, {@code GET /api/claude-usage}).
@@ -22,13 +24,22 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
 public record ClaudeUsage(
         @Schema(required = true, description = "NOT_CONFIGURED | OK | STALE")
         State state,
+        @Schema(required = true, description = "кто наблюдал показания: NONE | STATUSLINE | ACCOUNT_API")
+        UsageSource source,
         @Schema(description = "unix-время снятия показаний; null, если записи никогда не было")
         Long capturedAt,
         @Schema(description = "причина деградации; null, когда её нет")
         String error,
         @Schema(required = true, description = "окна квоты; каждое может быть null (не отчитывалось)")
-        Windows windows
+        Windows windows,
+        @Schema(required = true, description = "помодельные недельные окна; пусто, если их не отдали")
+        List<ModelWindow> models
 ) {
+
+    public ClaudeUsage {
+        models = models == null ? List.of() : List.copyOf(models);
+        source = source == null ? UsageSource.NONE : source;
+    }
 
     /** Состояние снапшота. */
     public enum State { NOT_CONFIGURED, OK, STALE }
@@ -57,19 +68,40 @@ public record ClaudeUsage(
         }
     }
 
+    /**
+     * Одно помодельное недельное окно. Набор моделей ОТКРЫТ: имя носим как есть,
+     * не отображая в enum, иначе незнакомая модель молча исчезнет по дороге.
+     */
+    @Schema(name = "ClaudeUsageModelWindow", description = "Недельное окно, привязанное к модели")
+    public record ModelWindow(
+            @Schema(required = true, description = "имя модели, как его прислал сервер")
+            String model,
+            @Schema(required = true, description = "утилизация, целые проценты 0..100")
+            int usedPercent,
+            @Schema(required = true, description = "unix-время сброса окна")
+            long resetsAt
+    ) {}
+
     private static final Windows NO_WINDOWS = new Windows(null, null);
 
-    /** Хук ещё не ставили (или он ни разу не отработал): не ошибка, а норма. */
-    public static ClaudeUsage notConfigured() {
-        return new ClaudeUsage(State.NOT_CONFIGURED, null, null, NO_WINDOWS);
+    /** Источник ещё ничего не дал: не ошибка, а норма (хук не ставили / pull выключен). */
+    public static ClaudeUsage notConfigured(UsageSource source) {
+        return new ClaudeUsage(State.NOT_CONFIGURED, source, null, null, NO_WINDOWS, List.of());
     }
 
-    public static ClaudeUsage ok(long capturedAt, Window fiveHour, Window sevenDay) {
-        return new ClaudeUsage(State.OK, capturedAt, null, new Windows(fiveHour, sevenDay));
+    /** Стартовое состояние Registry: показаний не было ни от кого. */
+    public static ClaudeUsage none() {
+        return notConfigured(UsageSource.NONE);
     }
 
-    /** Тот же снапшот, помеченный устаревшим. Цифры и capturedAt сохраняются. */
+    public static ClaudeUsage ok(UsageSource source, long capturedAt,
+                                 Window fiveHour, Window sevenDay, List<ModelWindow> models) {
+        return new ClaudeUsage(State.OK, source, capturedAt, null,
+                new Windows(fiveHour, sevenDay), models);
+    }
+
+    /** Тот же снапшот, помеченный устаревшим. Цифры, источник и capturedAt сохраняются. */
     public ClaudeUsage stale(String reason) {
-        return new ClaudeUsage(State.STALE, capturedAt, reason, windows);
+        return new ClaudeUsage(State.STALE, source, capturedAt, reason, windows, models);
     }
 }

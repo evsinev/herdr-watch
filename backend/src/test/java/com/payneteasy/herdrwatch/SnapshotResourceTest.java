@@ -16,6 +16,8 @@ import io.restassured.response.Response;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import com.payneteasy.herdrwatch.usage.UsageSource;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -85,7 +87,7 @@ class SnapshotResourceTest {
     @AfterEach
     void cleanup() {
         SEEDED.forEach(registry::remove);
-        registry.updateClaudeUsage(ClaudeUsage.notConfigured());   // квота — общее состояние
+        registry.updateClaudeUsage(ClaudeUsage.none());   // квота — общее состояние
     }
 
     // --- golden per profile (§3.5): состав полей фиксирован → тест исчерпывающий ---
@@ -263,9 +265,9 @@ class SnapshotResourceTest {
 
     @Test
     void usageReportsBothWindowsWithSeverityAndCaptureTime() {
-        registry.updateClaudeUsage(ClaudeUsage.ok(1787797108L,
+        registry.updateClaudeUsage(ClaudeUsage.ok(UsageSource.STATUSLINE, 1787797108L,
                 new ClaudeUsage.Window(27, 1787803200L),
-                new ClaudeUsage.Window(95, 1788206400L)));
+                new ClaudeUsage.Window(95, 1788206400L), List.of()));
 
         given().when().get(USAGE).then().statusCode(200)
                 .header("Date", notNullValue())
@@ -282,8 +284,8 @@ class SnapshotResourceTest {
 
     @Test
     void absentWindowIsOmittedFromTheArrayNotZeroed() {
-        registry.updateClaudeUsage(ClaudeUsage.ok(1787797108L,
-                new ClaudeUsage.Window(27, 1787803200L), null));
+        registry.updateClaudeUsage(ClaudeUsage.ok(UsageSource.STATUSLINE, 1787797108L,
+                new ClaudeUsage.Window(27, 1787803200L), null, List.of()));
 
         given().when().get(USAGE).then().statusCode(200)
                 .body("windows.size()", equalTo(1))
@@ -292,7 +294,7 @@ class SnapshotResourceTest {
 
     @Test
     void notConfiguredIsASuccessfulEmptyAnswerNotAnError() {
-        registry.updateClaudeUsage(ClaudeUsage.notConfigured());
+        registry.updateClaudeUsage(ClaudeUsage.none());
 
         given().when().get(USAGE).then().statusCode(200)
                 .body("state", equalTo("NOT_CONFIGURED"))
@@ -303,8 +305,8 @@ class SnapshotResourceTest {
 
     @Test
     void staleSnapshotKeepsItsFiguresAndCaptureTime() {
-        registry.updateClaudeUsage(ClaudeUsage.ok(1787797108L,
-                new ClaudeUsage.Window(27, 1787803200L), null).stale("aged out"));
+        registry.updateClaudeUsage(ClaudeUsage.ok(UsageSource.STATUSLINE, 1787797108L,
+                new ClaudeUsage.Window(27, 1787803200L), null, List.of()).stale("aged out"));
 
         given().when().get(USAGE).then().statusCode(200)
                 .body("state", equalTo("STALE"))
@@ -316,10 +318,10 @@ class SnapshotResourceTest {
     void noFieldIsEverNull() throws Exception {
         // §3.4 запрещает null в любом состоянии — проверяем все три.
         List<ClaudeUsage> states = List.of(
-                ClaudeUsage.notConfigured(),
-                ClaudeUsage.ok(1787797108L, null, null),                       // ни одного окна
-                ClaudeUsage.ok(1787797108L, new ClaudeUsage.Window(27, 1787803200L),
-                        new ClaudeUsage.Window(24, 1788206400L)).stale("aged out"));
+                ClaudeUsage.none(),
+                ClaudeUsage.ok(UsageSource.STATUSLINE, 1787797108L, null, null, List.of()),                       // ни одного окна
+                ClaudeUsage.ok(UsageSource.STATUSLINE, 1787797108L, new ClaudeUsage.Window(27, 1787803200L),
+                        new ClaudeUsage.Window(24, 1788206400L), List.of()).stale("aged out"));
         for (ClaudeUsage u : states) {
             registry.updateClaudeUsage(u);
             JsonNode body = M.readTree(given().when().get(USAGE).then().statusCode(200)
@@ -339,8 +341,8 @@ class SnapshotResourceTest {
 
     @Test
     void usageEtagIsCapturedAtAndSupportsConditionalRequests() {
-        registry.updateClaudeUsage(ClaudeUsage.ok(1787797108L,
-                new ClaudeUsage.Window(27, 1787803200L), null));
+        registry.updateClaudeUsage(ClaudeUsage.ok(UsageSource.STATUSLINE, 1787797108L,
+                new ClaudeUsage.Window(27, 1787803200L), null, List.of()));
 
         String etag = given().when().get(USAGE).then().statusCode(200)
                 .extract().header("ETag");
@@ -353,17 +355,17 @@ class SnapshotResourceTest {
                 .body(emptyOrNullString());
 
         // Новая запись → новый валидатор → снова полное тело.
-        registry.updateClaudeUsage(ClaudeUsage.ok(1787799999L,
-                new ClaudeUsage.Window(31, 1787803200L), null));
+        registry.updateClaudeUsage(ClaudeUsage.ok(UsageSource.STATUSLINE, 1787799999L,
+                new ClaudeUsage.Window(31, 1787803200L), null, List.of()));
         given().header("If-None-Match", etag).when().get(USAGE).then().statusCode(200);
     }
 
     @Test
     void usageDoesNotDisturbTheAgentsEndpoint() {
         // §7: добавление эндпоинта не меняет ни один профиль и не двигает версию.
-        registry.updateClaudeUsage(ClaudeUsage.ok(1787797108L,
+        registry.updateClaudeUsage(ClaudeUsage.ok(UsageSource.STATUSLINE, 1787797108L,
                 new ClaudeUsage.Window(27, 1787803200L),
-                new ClaudeUsage.Window(24, 1788206400L)));
+                new ClaudeUsage.Window(24, 1788206400L), List.of()));
 
         for (String view : List.of("full", "compact", "status")) {
             given().when().get(AGENTS + "?view=" + view).then().statusCode(200)

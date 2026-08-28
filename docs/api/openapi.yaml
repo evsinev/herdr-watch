@@ -193,7 +193,9 @@ components:
       description: Квота подписки Claude (аккаунт целиком)
       required:
       - state
+      - source
       - windows
+      - models
       type: object
       properties:
         state:
@@ -201,6 +203,11 @@ components:
           type: string
           allOf:
           - $ref: "#/components/schemas/State"
+        source:
+          description: "кто наблюдал показания: NONE | STATUSLINE | ACCOUNT_API"
+          type: string
+          allOf:
+          - $ref: "#/components/schemas/UsageSource"
         capturedAt:
           format: int64
           description: "unix-время снятия показаний; null, если записи никогда не\
@@ -214,6 +221,30 @@ components:
           type: object
           allOf:
           - $ref: "#/components/schemas/ClaudeUsageWindows"
+        models:
+          description: "помодельные недельные окна; пусто, если их не отдали"
+          type: array
+          items:
+            $ref: "#/components/schemas/ClaudeUsageModelWindow"
+    ClaudeUsageModelWindow:
+      description: "Недельное окно, привязанное к модели"
+      required:
+      - model
+      - usedPercent
+      - resetsAt
+      type: object
+      properties:
+        model:
+          description: "имя модели, как его прислал сервер"
+          type: string
+        usedPercent:
+          format: int32
+          description: "утилизация, целые проценты 0..100"
+          type: integer
+        resetsAt:
+          format: int64
+          description: unix-время сброса окна
+          type: integer
     ClaudeUsageWindow:
       description: Одно окно квоты
       required:
@@ -538,7 +569,9 @@ components:
       - state
       - severityCode
       - capturedAt
+      - source
       - windows
+      - models
       type: object
       properties:
         protocolVersion:
@@ -557,12 +590,40 @@ components:
           format: int64
           description: "unix-время снятия показаний; 0, если показаний не было"
           type: integer
+        source:
+          description: "кто наблюдал показания: NONE | STATUSLINE | ACCOUNT_API"
+          type: string
         windows:
           description: "по записи на каждое отчитавшееся окно; пустой массив допус\
             тим, null — нет"
           type: array
           items:
             $ref: "#/components/schemas/SnapshotUsageWindow"
+        models:
+          description: "помодельные недельные окна; пустой массив, если их не отда\
+            ли"
+          type: array
+          items:
+            $ref: "#/components/schemas/SnapshotUsageModelWindow"
+    SnapshotUsageModelWindow:
+      description: "Недельное окно, привязанное к модели"
+      required:
+      - model
+      - usedPercent
+      - resetsAt
+      type: object
+      properties:
+        model:
+          description: "имя модели, как его прислал сервер"
+          type: string
+        usedPercent:
+          format: int32
+          description: "утилизация, целые проценты 0..100"
+          type: integer
+        resetsAt:
+          format: int64
+          description: unix-время сброса окна
+          type: integer
     SnapshotUsageWindow:
       description: Одно окно квоты
       required:
@@ -594,3 +655,9 @@ components:
         type:
           type: string
         data: {}
+    UsageSource:
+      enum:
+      - NONE
+      - STATUSLINE
+      - ACCOUNT_API
+      type: string

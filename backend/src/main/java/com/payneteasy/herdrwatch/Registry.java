@@ -6,6 +6,7 @@ import com.payneteasy.herdrwatch.model.Model.WorkspaceInfo;
 import com.payneteasy.herdrwatch.model.Model.AgentInfo;
 import com.payneteasy.herdrwatch.model.Model.StreamEvent;
 import com.payneteasy.herdrwatch.usage.ClaudeUsage;
+import com.payneteasy.herdrwatch.usage.UsageSource;
 
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.operators.multi.processors.BroadcastProcessor;
@@ -18,6 +19,8 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
+import java.util.EnumMap;
+import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -101,17 +104,51 @@ public class Registry {
      * Квота подписки Claude. Свойство аккаунта, а не хоста, поэтому лежит рядом с
      * картой хостов, а не в ней. volatile: пишет планировщик, читают HTTP-треды.
      */
-    private volatile ClaudeUsage claudeUsage = ClaudeUsage.notConfigured();
+    private volatile ClaudeUsage claudeUsage = ClaudeUsage.none();
 
     /**
-     * Применяем свежий снапшот квоты. Неизменившийся снапшот НЕ рассылаем
-     * (спека: «Unchanged data») — читатель тикает чаще, чем двигаются цифры,
-     * а тик без изменений не должен ни будить клиентов, ни двигать sequence.
+     * Последнее показание КАЖДОГО источника. Держим их порознь: под {@code auto}
+     * работают два источника с разным темпом, и если хранить одно значение, они
+     * перебивали бы друг друга туда-обратно на каждом тике.
      */
-    public void updateClaudeUsage(ClaudeUsage usage) {
-        if (usage == null || usage.equals(claudeUsage)) return;
-        claudeUsage = usage;
-        emit("claude_usage", usage);
+    private final EnumMap<UsageSource, ClaudeUsage> bySource = new EnumMap<>(UsageSource.class);
+
+    /**
+     * Применяем свежий снапшот квоты от одного из источников и публикуем победителя.
+     *
+     * <p>Побеждает НАИБОЛЕЕ СВЕЖЕЕ НАБЛЮДЕНИЕ, а не «pull всегда важнее»: pull ходит по
+     * интервалу, поэтому показание statusline вполне может быть новее. Сравниваем по тому
+     * же {@code capturedAt}, который видит оператор в гейдже.
+     *
+     * <p>Неизменившийся победитель НЕ рассылается (спека: «Unchanged data») — источники
+     * тикают чаще, чем двигаются цифры, а тик без изменений не должен ни будить клиентов,
+     * ни двигать sequence.
+     */
+    public synchronized void updateClaudeUsage(ClaudeUsage usage) {
+        if (usage == null) return;
+        bySource.put(usage.source(), usage);
+
+        ClaudeUsage winner = pickWinner();
+        if (winner == null || winner.equals(claudeUsage)) return;
+        claudeUsage = winner;
+        emit("claude_usage", winner);
+    }
+
+    /** Показание с самым поздним временем наблюдения; без времени — заведомо слабее. */
+    private ClaudeUsage pickWinner() {
+        ClaudeUsage best = null;
+        for (Entry<UsageSource, ClaudeUsage> e : bySource.entrySet()) {
+            ClaudeUsage candidate = e.getValue();
+            if (best == null) {
+                best = candidate;
+                continue;
+            }
+            Long a = candidate.capturedAt();
+            Long b = best.capturedAt();
+            if (a == null) continue;                 // «показаний не было» не может победить
+            if (b == null || a > b) best = candidate;
+        }
+        return best;
     }
 
     /** Текущая квота — для REST и Snapshot API (для тех, кто не держит SSE). */

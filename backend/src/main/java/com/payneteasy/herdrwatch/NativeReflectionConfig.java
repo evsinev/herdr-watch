@@ -46,10 +46,13 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
             SnapshotError.class,
             SnapshotUsage.class,
             SnapshotUsage.Window.class,
+            SnapshotUsage.ModelWindow.class,
             ClaudeUsage.class,
             ClaudeUsage.Window.class,
             ClaudeUsage.Windows.class,
             ClaudeUsage.State.class,
+            ClaudeUsage.ModelWindow.class,
+            com.payneteasy.herdrwatch.usage.UsageSource.class,
         })
 public class NativeReflectionConfig {
 }

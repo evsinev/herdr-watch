@@ -132,18 +132,27 @@ public final class SnapshotProjection {
      * {@link UsageSeverity}, того же, что задаёт цвета в UI.
      */
     public static SnapshotUsage projectUsage(int protocolVersion, ClaudeUsage usage) {
-        ClaudeUsage u = usage != null ? usage : ClaudeUsage.notConfigured();
+        ClaudeUsage u = usage != null ? usage : ClaudeUsage.none();
         List<SnapshotUsage.Window> windows = new ArrayList<>(2);
         if (u.windows() != null) {
             addWindow(windows, "five_hour", u.windows().fiveHour());
             addWindow(windows, "seven_day", u.windows().sevenDay());
         }
+        List<SnapshotUsage.ModelWindow> models = new ArrayList<>();
+        for (ClaudeUsage.ModelWindow m : u.models()) {
+            models.add(new SnapshotUsage.ModelWindow(m.model(), m.usedPercent(), m.resetsAt()));
+        }
+        // severityCode СОЗНАТЕЛЬНО считается только по 5h/7d (дизайн D7): помодельные окна
+        // информационные, а этот int — то, на что переключается панель без текста. Подмешать
+        // их сюда значит менять смысл значения для уже работающих устройств.
         return new SnapshotUsage(
                 protocolVersion,
                 u.state().name(),
                 UsageSeverity.of(u),
                 u.capturedAt() != null ? u.capturedAt() : 0L,
-                List.copyOf(windows));
+                u.source().name(),
+                List.copyOf(windows),
+                List.copyOf(models));
     }
 
     private static void addWindow(List<SnapshotUsage.Window> out, String type, ClaudeUsage.Window w) {
