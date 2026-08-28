@@ -51,7 +51,7 @@ class ClaudeUsageReaderTest {
     @Test
     void bothWindowsAreRead() throws Exception {
         write(BOTH);
-        ClaudeUsage u = reader(Duration.ofMinutes(15)).read(fresh());
+        ClaudeUsage u = reader(Duration.ofMinutes(45)).read(fresh());
 
         assertEquals(State.OK, u.state());
         assertEquals(CAPTURED, u.capturedAt());
@@ -65,7 +65,7 @@ class ClaudeUsageReaderTest {
         write("""
                 { "capturedAt": %d, "five_hour": { "used_percentage": 27, "resets_at": %d } }
                 """.formatted(CAPTURED, FIVE_RESETS));
-        ClaudeUsage u = reader(Duration.ofMinutes(15)).read(fresh());
+        ClaudeUsage u = reader(Duration.ofMinutes(45)).read(fresh());
 
         assertEquals(State.OK, u.state());
         assertNotNull(u.windows().fiveHour());
@@ -75,7 +75,7 @@ class ClaudeUsageReaderTest {
     @Test
     void recordWithoutWindowsIsStillOkButEmpty() throws Exception {
         write("{ \"capturedAt\": %d }".formatted(CAPTURED));
-        ClaudeUsage u = reader(Duration.ofMinutes(15)).read(fresh());
+        ClaudeUsage u = reader(Duration.ofMinutes(45)).read(fresh());
 
         assertEquals(State.OK, u.state());
         assertTrue(u.windows().isEmpty());
@@ -89,23 +89,50 @@ class ClaudeUsageReaderTest {
                   "five_hour": { "used_percentage": 27 },
                   "seven_day": { "used_percentage": 24, "resets_at": %d } }
                 """.formatted(CAPTURED, SEVEN_RESETS));
-        ClaudeUsage u = reader(Duration.ofMinutes(15)).read(fresh());
+        ClaudeUsage u = reader(Duration.ofMinutes(45)).read(fresh());
 
         assertNull(u.windows().fiveHour(), "без resets_at время сброса выдумывать нельзя");
         assertNotNull(u.windows().sevenDay());
     }
 
     @Test
-    void outOfRangePercentIsDropped() throws Exception {
+    void fractionalPercentIsRoundedNotDropped() throws Exception {
+        // Так приходит от Claude Code, когда значение не ровное: доля × 100 с хвостом.
         write("""
-                { "capturedAt": %d, "five_hour": { "used_percentage": 140, "resets_at": %d } }
+                { "capturedAt": %d,
+                  "five_hour": { "used_percentage": 7.000000000000001, "resets_at": %d },
+                  "seven_day": { "used_percentage": 34.6, "resets_at": %d } }
+                """.formatted(CAPTURED, FIVE_RESETS, SEVEN_RESETS));
+        ClaudeUsage u = reader(Duration.ofMinutes(45)).read(fresh());
+
+        assertEquals(State.OK, u.state());
+        assertNotNull(u.windows().fiveHour(), "дробное значение не должно ронять окно");
+        assertEquals(7, u.windows().fiveHour().usedPercent());
+        assertEquals(35, u.windows().sevenDay().usedPercent());
+    }
+
+    @Test
+    void overageAboveHundredIsClampedNotDropped() throws Exception {
+        write("""
+                { "capturedAt": %d, "five_hour": { "used_percentage": 104.7, "resets_at": %d } }
                 """.formatted(CAPTURED, FIVE_RESETS));
-        assertNull(reader(Duration.ofMinutes(15)).read(fresh()).windows().fiveHour());
+        ClaudeUsage u = reader(Duration.ofMinutes(45)).read(fresh());
+
+        assertNotNull(u.windows().fiveHour());
+        assertEquals(100, u.windows().fiveHour().usedPercent());
+    }
+
+    @Test
+    void negativePercentIsDropped() throws Exception {
+        write("""
+                { "capturedAt": %d, "five_hour": { "used_percentage": -3, "resets_at": %d } }
+                """.formatted(CAPTURED, FIVE_RESETS));
+        assertNull(reader(Duration.ofMinutes(45)).read(fresh()).windows().fiveHour());
     }
 
     @Test
     void missingFileIsNotConfigured() {
-        ClaudeUsage u = reader(Duration.ofMinutes(15)).read(fresh());
+        ClaudeUsage u = reader(Duration.ofMinutes(45)).read(fresh());
 
         assertEquals(State.NOT_CONFIGURED, u.state());
         assertNull(u.capturedAt());
@@ -115,7 +142,7 @@ class ClaudeUsageReaderTest {
     @Test
     void garbageFileWithoutPreviousSnapshotIsNotConfigured() throws Exception {
         write("this is not json");
-        ClaudeUsage u = reader(Duration.ofMinutes(15)).read(fresh());
+        ClaudeUsage u = reader(Duration.ofMinutes(45)).read(fresh());
 
         assertEquals(State.NOT_CONFIGURED, u.state());
         assertTrue(u.windows().isEmpty(), "частичных значений быть не должно");
@@ -123,7 +150,7 @@ class ClaudeUsageReaderTest {
 
     @Test
     void garbageFileAfterAGoodOneKeepsThePreviousSnapshotStale() throws Exception {
-        ClaudeUsageReader r = reader(Duration.ofMinutes(15));
+        ClaudeUsageReader r = reader(Duration.ofMinutes(45));
         write(BOTH);
         assertEquals(State.OK, r.read(fresh()).state());
 
@@ -139,7 +166,7 @@ class ClaudeUsageReaderTest {
 
     @Test
     void deletedFileAfterAGoodOneIsStale() throws Exception {
-        ClaudeUsageReader r = reader(Duration.ofMinutes(15));
+        ClaudeUsageReader r = reader(Duration.ofMinutes(45));
         write(BOTH);
         assertEquals(State.OK, r.read(fresh()).state());
 
@@ -154,7 +181,7 @@ class ClaudeUsageReaderTest {
     @Test
     void agedRecordGoesStaleKeepingFiguresAndCaptureTime() throws Exception {
         write(BOTH);
-        ClaudeUsage u = reader(Duration.ofMinutes(15)).read(Instant.ofEpochSecond(CAPTURED + 3600));
+        ClaudeUsage u = reader(Duration.ofMinutes(45)).read(Instant.ofEpochSecond(CAPTURED + 3600));
 
         assertEquals(State.STALE, u.state());
         assertEquals(CAPTURED, u.capturedAt());
@@ -165,7 +192,7 @@ class ClaudeUsageReaderTest {
 
     @Test
     void unchangedFileIsNotReparsedButAgeIsRecomputed() throws Exception {
-        ClaudeUsageReader r = reader(Duration.ofMinutes(15));
+        ClaudeUsageReader r = reader(Duration.ofMinutes(45));
         write(BOTH);
         assertEquals(State.OK, r.read(fresh()).state());
         // Файл не трогали (mtime тот же) — но запись успела состариться сама.
@@ -175,7 +202,7 @@ class ClaudeUsageReaderTest {
     @Test
     void recordWithoutCapturedAtIsRejected() throws Exception {
         write("{ \"five_hour\": { \"used_percentage\": 27, \"resets_at\": %d } }".formatted(FIVE_RESETS));
-        assertEquals(State.NOT_CONFIGURED, reader(Duration.ofMinutes(15)).read(fresh()).state());
+        assertEquals(State.NOT_CONFIGURED, reader(Duration.ofMinutes(45)).read(fresh()).state());
     }
 
     // --- полосы severity ---

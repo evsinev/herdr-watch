@@ -38,8 +38,13 @@ Facts that shape the design:
    `...(O.five_hour || O.seven_day) && { rate_limits: O }`, so a fresh session
    before its first API response has no `rate_limits` at all. Absence is normal,
    not an error.
-2. **`used_percentage` is already 0–100**, not a fraction — unlike the
-   `utilization` field on the underlying API.
+2. **`used_percentage` is on a 0–100 scale**, not a fraction — unlike the
+   `utilization` field on the underlying API. It is **not** always an integer,
+   though: it is computed as a fraction × 100, so any value that is not whole
+   arrives with floating-point noise (observed live: `7.000000000000001`, while
+   `seven_day` in the same payload was a plain `34`). A consumer that type-checks
+   for `int` silently drops the window — that is exactly how the 5-hour bar came
+   and went. Accept both, and round.
 3. **Invocation is event-driven**, on session state changes. `settings.json`
    additionally accepts `statusLine.refreshInterval`, documented as "Re-run the
    status line command every N seconds in addition to event-driven updates"
@@ -237,15 +242,37 @@ probe, not inference:
 |---|---|
 | Base host | `https://api.anthropic.com` (`claude.ai` serves a Cloudflare page) |
 | `claude setup-token` | `403 "does not meet scope requirement user:profile"`; mints `user:inference` only, no `--scope` flag |
-| Keychain `Claude Code-credentials` | `scopes` include `user:profile`, but access token expired 38.5 d and refresh token 37.9 d |
-| `claude auth login` (reported success) | did not rewrite the item — TTLs byte-identical before and after |
-| Keychain sweep | that item is the only `*-credentials` entry; login wrote nowhere else |
-| `~/.claude/daemon-auth-status.json` | `auth_required` |
+| Keychain `Claude Code-credentials` | **two** items under one service — see correction below |
+| `~/.claude/daemon-auth-status.json` | `auth_required` (describes the dead item, not current auth) |
 
-No credential source was found that an external process could read and use. The
-test machine's Claude Code auth was itself broken, so this is not proof the pull
-design is universally unworkable — but it could not be validated, and the push
-design makes the question moot.
+**Correction (2026-08-28).** The keychain rows above were a measurement error, and
+the conclusion drawn from them was wrong. The service `Claude Code-credentials`
+holds **two** generic-password items distinguished only by account:
+
+| acct | state |
+|---|---|
+| `<username>` | live — rewritten by every `claude auth login`, carries `user:profile` |
+| `no` | a fossil; both tokens expired 19–20 July |
+
+`security find-generic-password -s "Claude Code-credentials" -w` **without `-a`**
+returns whichever it finds first, and on the reference machine that is consistently
+the fossil. So the original probe read a 39-day-dead token, concluded the credential
+was unusable, and reported that `claude auth login` "did not rewrite the item" — it
+did, to the other one. A `SecItemCopyMatching` with `kSecMatchLimitOne` and no
+account attribute hits the same trap; two of the surveyed macOS trackers do exactly
+that and would misdiagnose this machine identically.
+
+Re-probed with the **live** item: `GET https://api.anthropic.com/api/oauth/usage`
+returns **HTTP 200**, with `five_hour`, `seven_day`, and a `limits[]` array carrying
+model-scoped weekly entries (including `Fable`). The `claude-cli/<version> (external,
+cli)` User-Agent matters — without it the request lands in a much stricter
+rate-limit bucket.
+
+So the pull design is **not** blocked by credential availability, as this section
+previously claimed. It remains not-chosen for the reasons that still hold on their
+own merits: it needs a credential at all, it depends on an undocumented and
+unversioned endpoint, and the push design needs neither. That is a trade-off, not an
+impossibility — anyone revisiting this should start from the corrected facts.
 
 Even had it worked, the pull design stacked three unversioned dependencies: an
 undocumented endpoint, an undocumented credential-store layout, and a refresh-token

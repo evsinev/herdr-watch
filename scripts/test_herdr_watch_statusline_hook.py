@@ -115,6 +115,73 @@ class HookTest(unittest.TestCase):
         self.assertEqual(out, b"")
         self.assertEqual(rc, 0)
 
+    # --- дробные проценты: из-за них пропадал 5-часовой бар ---
+
+    def test_live_fractional_value_is_recorded_rounded(self):
+        # Ровно то значение, что пришло от Claude Code, когда бар исчезал.
+        payload = json.dumps({
+            "rate_limits": {
+                "five_hour": {"used_percentage": 7.000000000000001, "resets_at": 1787883600},
+                "seven_day": {"used_percentage": 34, "resets_at": 1788206400},
+            }
+        }).encode()
+        out, _, rc = run(payload, self.state)
+
+        self.assertEqual(out, payload)
+        self.assertEqual(rc, 0)
+        rec = self.read_state()
+        self.assertEqual(rec["five_hour"], {"used_percentage": 7, "resets_at": 1787883600},
+                         "дробное значение не должно ронять окно")
+        self.assertEqual(rec["seven_day"]["used_percentage"], 34)
+
+    def test_fractional_values_are_rounded_to_the_nearest_percent(self):
+        for raw, expected in ((7.4, 7), (7.6, 8), (0.2, 0), (99.5, 100)):
+            with self.subTest(raw=raw):
+                payload = json.dumps({
+                    "rate_limits": {"five_hour": {"used_percentage": raw, "resets_at": 1787883600}}
+                }).encode()
+                run(payload, self.state)
+                self.assertEqual(self.read_state()["five_hour"]["used_percentage"], expected)
+
+    def test_overage_above_100_is_clamped_not_dropped(self):
+        # Перерасход не должен гасить индикатор ровно тогда, когда он важнее всего.
+        payload = json.dumps({
+            "rate_limits": {"five_hour": {"used_percentage": 104.7, "resets_at": 1787883600}}
+        }).encode()
+        run(payload, self.state)
+        self.assertEqual(self.read_state()["five_hour"]["used_percentage"], 100)
+
+    def test_float_resets_at_is_accepted(self):
+        payload = json.dumps({
+            "rate_limits": {"five_hour": {"used_percentage": 7, "resets_at": 1787883600.0}}
+        }).encode()
+        run(payload, self.state)
+        self.assertEqual(self.read_state()["five_hour"]["resets_at"], 1787883600)
+
+    def test_still_rejects_nonsense_numbers(self):
+        for raw in (-1, -0.5, True, "7", None, [7]):
+            with self.subTest(raw=raw):
+                payload = json.dumps({
+                    "rate_limits": {"five_hour": {"used_percentage": raw, "resets_at": 1787883600}}
+                }).encode()
+                out, _, rc = run(payload, self.state)
+                self.assertEqual(out, payload)
+                self.assertEqual(rc, 0)
+                self.assertFalse(os.path.exists(self.state), f"{raw!r} не должно записываться")
+
+    def test_rounding_change_alone_is_not_a_rewrite(self):
+        # 7.0000001 и 7.0000002 округляются в одно и то же — файл трогать незачем.
+        first = json.dumps({
+            "rate_limits": {"five_hour": {"used_percentage": 7.0000001, "resets_at": 1787883600}}
+        }).encode()
+        run(first, self.state)
+        before = self.mtime_ns()
+        second = json.dumps({
+            "rate_limits": {"five_hour": {"used_percentage": 7.0000002, "resets_at": 1787883600}}
+        }).encode()
+        run(second, self.state)
+        self.assertEqual(self.mtime_ns(), before)
+
     # --- capturedAt честен: пишем только когда цифры сдвинулись ---
 
     def seed(self, rec):

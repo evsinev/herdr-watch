@@ -11,7 +11,12 @@ Captured on the reference machine (Claude Code 2.1.247) by temporarily wrapping
 ```
 
 - [x] 1.1 Dump one real statusline payload
-- [x] 1.2 `used_percentage` is an integer 0–100; `resets_at` is epoch seconds — confirmed
+- [x] 1.2 `used_percentage` is on a 0–100 scale; `resets_at` is epoch seconds — confirmed.
+      **ИСПРАВЛЕНО 2026-08-28:** «integer» здесь было обобщением с одного удачного сэмпла (27)
+      и оказалось неверным. Значение считается как доля × 100, и при неровном результате
+      приезжает float с хвостом (живой пример: `7.000000000000001`, при этом `seven_day` в том
+      же payload — обычный `34`). Валидатор, написанный под этот неверный факт, молча ронял
+      окно — из-за чего 5-часовой бар периодически исчезал, а показанное число отставало.
 - [x] 1.3 Values agree with the rendered statusline (`5h 27% (38m) · 7d 24%`)
 - [x] 1.4 Other fields present: `cost` (`total_cost_usd`, durations, lines +/-), `context_window` (`total_input_tokens`, `context_window_size`, `current_usage` incl. cache breakdown), `model`, `effort`, `fast_mode`, `thinking`, `session_id`, `session_name`, `workspace`, `cwd`, `transcript_path`, `output_style`, `prompt_id`, `exceeds_200k_tokens`, `version` — recorded as a design Open Question, **not built here**
 - [x] 1.5 Shape matches design.md — no update required
@@ -30,6 +35,13 @@ Captured on the reference machine (Claude Code 2.1.247) by temporarily wrapping
       делает API-вызова, `rate_limits` в payload те же, и штамповка времени на каждый запуск
       выдавала бы часовой давности цифры за секундные. Неизменившийся тик не трогает и mtime —
       backend-поллер тоже молчит. Порог `stale-after` поднят 15m → 45m под новую семантику.
+- [x] 2.10 Принимать дробный `used_percentage`: округлять до целого процента, выше 100 клампить
+      (перерасход не должен гасить индикатор), отрицательные/bool/NaN/строки по-прежнему
+      отбрасывать. Та же терпимость — в `ClaudeUsageReader.window()` на случай старого хука
+      против нового бэкенда.
+- [x] 2.11 Тесты на это с обеих сторон, на реальном значении `7.000000000000001`: округление
+      .4/.6, кламп 104.7 → 100, float `resets_at`, и что изменение только в хвосте округления
+      не переписывает файл
 - [x] 2.9 Тесты: одинаковый payload дважды → mtime не двигается; изменившийся процент →
       `capturedAt` растёт; смена только `resets_at` → это изменение; исчезнувшее окно → запись
       переписана; битый/безвременный существующий файл → чинится

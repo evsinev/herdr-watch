@@ -35,6 +35,10 @@ command's own output, and MUST NOT delay that output perceptibly.
 - **WHEN** the payload has no quota section, which is the case until Claude Code has observed rate limits
 - **THEN** the hook forwards the payload and leaves any previously recorded state untouched
 
+#### Scenario: Figures arrive as fractional numbers
+- **WHEN** a utilization figure arrives with a fractional part rather than as a whole number
+- **THEN** it is recorded as the nearest whole percent, and the window is recorded rather than dropped
+
 #### Scenario: Malformed payload
 - **WHEN** the input is not valid or has an unexpected shape
 - **THEN** the hook forwards it unchanged and exits successfully without recording

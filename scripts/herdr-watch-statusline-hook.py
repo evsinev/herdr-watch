@@ -29,7 +29,8 @@ written atomically (temp file in the same directory + rename), shape:
       "seven_day": { "used_percentage": 24, "resets_at": 1788206400 } }
 
 A window absent from the payload is absent here too — never a zero and never a
-placeholder reset time. A payload with no usable window leaves the previous
+placeholder reset time. Figures are rounded to whole percents on the way in, so the
+file only ever holds integers. A payload with no usable window leaves the previous
 record untouched (normal before the session's first API response).
 
 The file is rewritten ONLY when the figures actually change, so `capturedAt` means
@@ -40,6 +41,7 @@ before — re-stamping them would pass hour-old numbers off as current.
 """
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -55,20 +57,33 @@ def state_file():
     return os.path.abspath(os.path.expanduser(raw))
 
 
+def number(value):
+    """Finite int/float, or None. bool is an int subclass — a boolean means the shape changed."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value if math.isfinite(value) else None
+
+
 def window(raw):
-    """Validated window, or None — an unusable window is omitted, never zeroed."""
+    """Validated window, or None — an unusable window is omitted, never zeroed.
+
+    `used_percentage` is on a 0–100 scale but is NOT always an integer: it is computed
+    as a fraction × 100, so a value that isn't whole arrives with floating-point noise
+    (observed live: 7.000000000000001). Rejecting floats here silently dropped the
+    window, which is why the 5-hour bar used to come and go.
+
+    Above 100 we clamp rather than reject: an overage must not make the gauge vanish
+    at exactly the moment it matters most.
+    """
     if not isinstance(raw, dict):
         return None
-    used = raw.get("used_percentage")
-    resets = raw.get("resets_at")
-    # bool is an int subclass; a boolean here means the shape changed.
-    if isinstance(used, bool) or isinstance(resets, bool):
+    used = number(raw.get("used_percentage"))
+    resets = number(raw.get("resets_at"))
+    if used is None or used < 0:
         return None
-    if not isinstance(used, int) or not 0 <= used <= 100:
+    if resets is None or resets <= 0:
         return None
-    if not isinstance(resets, int) or resets <= 0:
-        return None
-    return {"used_percentage": used, "resets_at": resets}
+    return {"used_percentage": min(100, round(used)), "resets_at": int(resets)}
 
 
 def windows_of(payload):

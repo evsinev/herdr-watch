@@ -153,15 +153,23 @@ public class ClaudeUsageReader {
                 window(root.get("seven_day")));
     }
 
+    /**
+     * Наш хук пишет уже округлённые целые, но дробные значения принимаем тоже: старый
+     * хук против нового бэкенда иначе молча ронял бы окно (именно так пропадал
+     * 5-часовой бар — {@code used_percentage} приходит как доля × 100 и при неровном
+     * значении несёт хвост вида 7.000000000000001). Выше 100 клампим, а не отбрасываем:
+     * перерасход не должен гасить индикатор ровно тогда, когда он важнее всего.
+     */
     private static ClaudeUsage.Window window(JsonNode n) {
         if (n == null || !n.isObject()) return null;
         JsonNode used = n.get("used_percentage");
         JsonNode resets = n.get("resets_at");
-        if (used == null || !used.isIntegralNumber()) return null;
-        if (resets == null || !resets.canConvertToLong()) return null;
-        int percent = used.intValue();
-        long resetsAt = resets.longValue();
-        if (percent < 0 || percent > 100 || resetsAt <= 0) return null;
+        if (used == null || !used.isNumber()) return null;
+        if (resets == null || !resets.isNumber()) return null;
+        double rawPercent = used.doubleValue();
+        long resetsAt = (long) resets.doubleValue();
+        if (!Double.isFinite(rawPercent) || rawPercent < 0 || resetsAt <= 0) return null;
+        int percent = (int) Math.min(100, Math.round(rawPercent));
         return new ClaudeUsage.Window(percent, resetsAt);
     }
 
