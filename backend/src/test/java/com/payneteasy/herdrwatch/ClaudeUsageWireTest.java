@@ -105,17 +105,29 @@ class ClaudeUsageWireTest {
                 .body("models.size()", equalTo(0));
     }
 
+    /**
+     * Событие квоты, пришедшее подписчику. Ждать нечего и НЕЛЬЗЯ: {@code bus.onNext}
+     * синхронный, событие уже получено к моменту проверки, а {@code awaitNextItems(1)}
+     * ждёт СЛЕДУЮЩЕЕ сверх полученных — на тихой шине (CI, где источники хостов
+     * отключены) это гарантированный таймаут. Заодно фильтруем по типу: на живой
+     * машине по той же шине идут host_update, и «первый элемент» — не наш.
+     */
+    private static Object quotaPayload(AssertSubscriber<StreamEvent> sub) {
+        List<StreamEvent> quota = sub.getItems().stream()
+                .filter(e -> "claude_usage".equals(e.type()))
+                .toList();
+        assertFalse(quota.isEmpty(), "событие claude_usage не пришло: " + sub.getItems());
+        return quota.get(quota.size() - 1).data();
+    }
+
     @Test
     void sseEventCarriesTheSameAdditiveFields() throws Exception {
         AssertSubscriber<StreamEvent> sub = registry.events()
-                .subscribe().withSubscriber(AssertSubscriber.create(4));
+                .subscribe().withSubscriber(AssertSubscriber.create(Long.MAX_VALUE));
 
         registry.updateClaudeUsage(accountApiReading(1787797300L));
 
-        StreamEvent event = sub.awaitNextItems(1).getItems().get(0);
-        assertEquals("claude_usage", event.type());
-
-        JsonNode payload = M.valueToTree(event.data());
+        JsonNode payload = M.valueToTree(quotaPayload(sub));
         assertEquals("ACCOUNT_API", payload.get("source").asText());
         assertTrue(payload.get("models").isArray());
         assertEquals(1, payload.get("models").size());
@@ -132,14 +144,13 @@ class ClaudeUsageWireTest {
     @Test
     void sseAndRestAgreeFieldForField() throws Exception {
         AssertSubscriber<StreamEvent> sub = registry.events()
-                .subscribe().withSubscriber(AssertSubscriber.create(4));
+                .subscribe().withSubscriber(AssertSubscriber.create(Long.MAX_VALUE));
 
         registry.updateClaudeUsage(accountApiReading(1787797400L));
 
         // Через строку с обеих сторон: valueToTree дал бы LongNode там, где readTree
         // даёт IntNode, и сравнение развалилось бы на типе узла, а не на содержимом.
-        JsonNode fromSse = M.readTree(
-                M.writeValueAsString(sub.awaitNextItems(1).getItems().get(0).data()));
+        JsonNode fromSse = M.readTree(M.writeValueAsString(quotaPayload(sub)));
         JsonNode fromRest = M.readTree(given().when().get(REST).then().statusCode(200)
                 .extract().asString());
 
