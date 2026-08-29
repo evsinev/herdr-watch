@@ -1,6 +1,7 @@
 # local helper scripts (may contain secrets) — do not commit
 build.sh
 run.sh
+scripts/pidwatch-8081.sh
 
 # build artifacts
 backend/target/
