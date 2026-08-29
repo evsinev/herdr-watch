@@ -2,8 +2,9 @@ name: Release
 
 # On a version tag (v*): build the fat-jar and native binaries (Linux/macOS/Windows),
 # attach them to a GitHub Release, and push a JVM Docker image to GHCR.
-# workflow_dispatch is allowed for dry-runs (builds + pushes image, but the Release
-# step is guarded to tag pushes only).
+# workflow_dispatch is allowed for dry-runs: it builds everything and pushes an image
+# tagged with the branch name, but the Release step and the `:latest` image tag are both
+# guarded to tag pushes only.
 
 on:
   push:
@@ -141,6 +142,20 @@ jobs:
         id: img
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
+      # `:latest` только с тега версии. Раньше он пушился безусловно, и любой
+      # workflow_dispatch (dry-run релизной матрицы) молча переставлял `latest` на
+      # сборку с ветки — тот, кто делал `docker pull …:latest`, получал не релиз.
+      - name: Compute image tags
+        id: tags
+        run: |
+          name='${{ steps.img.outputs.name }}'
+          {
+            echo 'list<<TAGS'
+            echo "${name}:${GITHUB_REF_NAME}"
+            if [[ "${GITHUB_REF}" == refs/tags/* ]]; then echo "${name}:latest"; fi
+            echo 'TAGS'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build & push
         uses: docker/build-push-action@v7
         env:
@@ -150,9 +165,7 @@ jobs:
           file: docker/Dockerfile.jvm
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ${{ steps.img.outputs.name }}:${{ github.ref_name }}
-            ${{ steps.img.outputs.name }}:latest
+          tags: ${{ steps.tags.outputs.list }}
 
   # ---- macOS menu-bar tray .app (ad-hoc signed), zipped as a release asset ----
   tray:
