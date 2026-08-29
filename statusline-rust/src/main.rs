@@ -37,6 +37,12 @@ fn main() {
     panic::set_hook(Box::new(|_| {}));
 
     let args = args::from_env();
+    // Both meta-modes answer about the command itself, so neither reads stdin: the
+    // operator running `--help` in a terminal must not have it hang on an open pipe.
+    if args.show_help {
+        write_line(args::usage().trim_end());
+        return;
+    }
     if args.show_version {
         write_line(&format!("herdr-watch-statusline {}", args::VERSION));
         return;

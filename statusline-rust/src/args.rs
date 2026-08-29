@@ -13,6 +13,57 @@ use crate::fmt::Thresholds;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// The usage text.
+///
+/// It goes to **stdout**, like everything else this binary prints: stderr stays empty
+/// unconditionally (design D2), so a status line somehow invoked with `--help` still
+/// cannot spill a diagnostic into the operator's terminal.
+pub fn usage() -> String {
+    format!(
+        "\
+herdr-watch-statusline {VERSION}
+The Claude Code status line for herdr-watch.
+
+Configure it as your `statusLine` command in ~/.claude/settings.json. It reads the
+payload Claude Code puts on stdin, writes one rendered line to stdout, and records the
+Claude quota into ~/.config/herdr-watch/claude-usage.json for the herdr-watch backend.
+
+It reads its input and nothing else: no network, no credential, no subprocess.
+
+USAGE:
+    herdr-watch-statusline [OPTIONS] < payload.json
+
+OPTIONS:
+        --no-capture           Render only; the state file is not touched.
+        --capture-only         Record only; nothing is written to stdout.
+        --transcript-fallback  When the payload does not report context consumption,
+                               estimate it from the tail of the session transcript.
+                               Off by default: this is the one thing besides stdin
+                               that would be read.
+        --warn-at <PCT>        Where a figure turns yellow.  [default: 60]
+        --critical-at <PCT>    Where a figure turns red.     [default: 85]
+                               Use 70 and 90 to match the dashboard's own bands.
+        --state-file <PATH>    Where the quota is recorded.
+                               [env: HERDR_WATCH_USAGE_FILE]
+                               [default: ~/.config/herdr-watch/claude-usage.json]
+        --no-color             No ANSI codes. NO_COLOR is honoured too.
+    -V, --version              Print the version. stdin is not read.
+    -h, --help                 Print this text. stdin is not read.
+
+An unrecognised argument is ignored rather than refused: a typo here must not blank
+your status line.
+
+EXAMPLES:
+    Compare the rendered line against another implementation:
+        herdr-watch-statusline --no-capture < payload.json
+
+    Keep your own renderer and record the quota alongside it:
+        sh -c 'p=$(cat); printf %s \"$p\" | herdr-watch-statusline --capture-only;
+               printf %s \"$p\" | ~/.claude/my-statusline.sh'
+"
+    )
+}
+
 /// What this invocation should do.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Args {
@@ -24,6 +75,8 @@ pub struct Args {
     pub state_file: Option<String>,
     /// Print the version and stop, without reading stdin.
     pub show_version: bool,
+    /// Print the usage text and stop, without reading stdin.
+    pub show_help: bool,
 }
 
 impl Default for Args {
@@ -36,6 +89,7 @@ impl Default for Args {
             thresholds: Thresholds::default(),
             state_file: None,
             show_version: false,
+            show_help: false,
         }
     }
 }
@@ -58,6 +112,7 @@ pub fn parse(argv: &[String], no_color_env: bool) -> Args {
             "--transcript-fallback" => args.transcript_fallback = true,
             "--no-color" | "--no-colour" => args.coloured = false,
             "-V" | "--version" => args.show_version = true,
+            "-h" | "--help" => args.show_help = true,
             "--warn-at" => {
                 if let Some(value) = percent_at(argv, index + 1) {
                     args.thresholds.warn_at = value;
@@ -160,6 +215,35 @@ mod tests {
         assert!(!parse_str(&["--no-color"]).coloured);
         assert!(!parse(&[], true).coloured);
         assert!(parse(&[], false).coloured);
+    }
+
+    #[test]
+    fn the_help_flag_is_recognised_in_both_spellings() {
+        assert!(parse_str(&["-h"]).show_help);
+        assert!(parse_str(&["--help"]).show_help);
+        assert!(!parse_str(&[]).show_help);
+    }
+
+    #[test]
+    fn the_usage_text_documents_every_flag_the_parser_accepts() {
+        // Cheap guard against a flag being added and the help quietly going stale.
+        let text = usage();
+        for flag in [
+            "--no-capture",
+            "--capture-only",
+            "--transcript-fallback",
+            "--warn-at",
+            "--critical-at",
+            "--state-file",
+            "--no-color",
+            "--version",
+            "--help",
+        ] {
+            assert!(text.contains(flag), "usage() does not mention {flag}");
+        }
+        assert!(text.contains(VERSION), "usage() must name the version it belongs to");
+        assert!(text.contains("HERDR_WATCH_USAGE_FILE"));
+        assert!(text.contains("NO_COLOR"));
     }
 
     #[test]

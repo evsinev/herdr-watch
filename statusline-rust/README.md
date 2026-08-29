@@ -46,6 +46,7 @@ release as `herdr-watch-statusline-<tag>-<platform>`.
 | `--state-file <path>` | `$HERDR_WATCH_USAGE_FILE`, else `~/.config/herdr-watch/claude-usage.json` | where the quota is recorded |
 | `--no-color` | off (`NO_COLOR` is honoured) | no ANSI codes |
 | `-V`, `--version` | | print the version; stdin is not read |
+| `-h`, `--help` | | print the usage text; stdin is not read |
 
 An unrecognised argument is **ignored**, not refused: a typo in `settings.json`
 must not blank the status line.

@@ -431,6 +431,26 @@ fn an_unrecognised_argument_does_not_blank_the_line() {
 }
 
 #[test]
+fn the_usage_text_is_printed_without_reading_stdin_or_recording() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = state_path(&dir);
+
+    for flag in ["-h", "--help"] {
+        // A payload is offered and must be ignored: running `--help` in a terminal
+        // must not hang waiting on an open pipe.
+        let run = run(&path, &payload(Some((27.0, 1787803200)), None), &[flag]);
+
+        assert_eq!(run.status, 0, "{flag}");
+        assert!(run.stderr.is_empty(), "{flag}: help never goes to stderr");
+        let text = run.stdout_str();
+        assert!(text.contains("USAGE:"), "{flag}: {text}");
+        assert!(text.contains("--capture-only"), "{flag}");
+        assert!(text.contains("herdr-watch-statusline "), "{flag}");
+        assert!(!path.exists(), "{flag}: --help records nothing");
+    }
+}
+
+#[test]
 fn the_version_is_reported_without_reading_stdin() {
     let dir = tempfile::tempdir().unwrap();
     let path = state_path(&dir);
