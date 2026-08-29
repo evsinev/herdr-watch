@@ -20,7 +20,7 @@
     clippy::print_stderr
 )]
 
-use std::io::{Read, Write};
+use std::io::{IsTerminal, Read, Write};
 use std::panic::{self, AssertUnwindSafe};
 
 use serde_json::Value;
@@ -40,7 +40,12 @@ fn main() {
     // Both meta-modes answer about the command itself, so neither reads stdin: the
     // operator running `--help` in a terminal must not have it hang on an open pipe.
     if args.show_help {
-        write_line(args::usage().trim_end());
+        // Colour for the usage text alone also depends on stdout being a terminal:
+        // its reader is a person, and a piped `--help` should not be full of escape
+        // sequences. The status line itself stays coloured through a pipe, because
+        // its reader is Claude Code.
+        let coloured = args.coloured && std::io::stdout().is_terminal();
+        write_line(args::usage(coloured).trim_end());
         return;
     }
     if args.show_version {

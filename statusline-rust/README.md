@@ -51,6 +51,11 @@ release as `herdr-watch-statusline-<tag>-<platform>`.
 An unrecognised argument is **ignored**, not refused: a typo in `settings.json`
 must not blank the status line.
 
+The usage text is coloured only when stdout is a terminal, so piping `--help` into a
+file or a pager stays clean. The rendered status line is the opposite case and keeps
+its colour through a pipe — its reader is Claude Code, which interprets the codes.
+`--no-color` and `NO_COLOR` silence both.
+
 ### Keeping your own renderer
 
 There is no wrapping mode. Record alongside whatever you already have:

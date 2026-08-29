@@ -451,6 +451,21 @@ fn the_usage_text_is_printed_without_reading_stdin_or_recording() {
 }
 
 #[test]
+fn piped_help_carries_no_escape_codes() {
+    // stdout here is a pipe, not a terminal: the usage text is for a person, so
+    // redirecting it into a file or a pager must not fill it with escape sequences.
+    // The rendered status line is the opposite case and stays coloured through a pipe.
+    let dir = tempfile::tempdir().unwrap();
+    let path = state_path(&dir);
+
+    let help = run(&path, b"", &["--help"]);
+    assert!(!help.stdout_str().contains('\u{1b}'), "{}", help.stdout_str());
+
+    let line = run(&path, &payload(Some((27.0, 1787803200)), None), &["--no-capture"]);
+    assert!(line.stdout_str().contains('\u{1b}'), "the status line keeps its colour");
+}
+
+#[test]
 fn the_version_is_reported_without_reading_stdin() {
     let dir = tempfile::tempdir().unwrap();
     let path = state_path(&dir);

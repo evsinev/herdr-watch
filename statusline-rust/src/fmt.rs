@@ -48,16 +48,7 @@ impl Palette {
     /// Wrap `text` in the given codes. With colour off the codes vanish and the
     /// line is the same text, unstyled.
     pub fn paint(&self, text: &str, codes: &[&str]) -> String {
-        if !self.coloured {
-            return text.to_owned();
-        }
-        let mut out = String::with_capacity(text.len() + 16);
-        for code in codes {
-            out.push_str(code);
-        }
-        out.push_str(text);
-        out.push_str(RESET);
-        out
+        paint(text, codes, self.coloured)
     }
 
     /// The shared severity colour: context and each quota window are coloured the
@@ -71,6 +62,23 @@ impl Palette {
             GREEN
         }
     }
+}
+
+/// Wrap `text` in the given codes, or return it untouched when colour is off.
+///
+/// The one painting primitive in the crate: the status line goes through
+/// [`Palette`], the usage text calls this directly (it has no severity to colour by).
+pub fn paint(text: &str, codes: &[&str], coloured: bool) -> String {
+    if !coloured {
+        return text.to_owned();
+    }
+    let mut out = String::with_capacity(text.len() + 16);
+    for code in codes {
+        out.push_str(code);
+    }
+    out.push_str(text);
+    out.push_str(RESET);
+    out
 }
 
 /// Token counts: `1.0M`, `1.5k`, or a plain integer.
