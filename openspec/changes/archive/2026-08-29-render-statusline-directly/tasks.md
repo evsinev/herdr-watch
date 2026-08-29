@@ -148,7 +148,15 @@ Nothing is deleted until this section has run.
 
 - [x] 9.1 `.github/workflows/release.yml`: a matrix job for `aarch64-apple-darwin` and `x86_64-unknown-linux-musl` (with `musl-tools`), artifacts named so the existing `dist/**/herdr-watch-*` glob picks them up
 - [x] 9.2 Add the job to the release job's `needs:` and mention the binaries in the release body
-- [ ] 9.3 (operator) A `workflow_dispatch` dry run **before** the first real tag — musl builds are where release workflows break, and a tag push is the worst moment to find out
+- [x] 9.3 A `workflow_dispatch` dry run **before** the first real tag — musl builds are where release workflows break, and a tag push is the worst moment to find out
+      — прогнан 2026-08-29 (run 33228796351): обе матричные цели зелёные, musl-сборка
+      даёт `static-pie linked, stripped`, macOS-бинарник arm64 запускается и рендерит.
+      Job `GitHub Release` при dispatch пропускается, поэтому глоб `dist/**/herdr-watch-*`
+      сам workflow не проверил — сверен вручную по скачанным артефактам: оба файла
+      (`herdr-watch-statusline-<ref>-{macos-arm64,linux-amd64}`) под него попадают.
+      **Побочный эффект dispatch:** job `Docker image (GHCR)` не ограничена тегами и
+      пушит `:${{ github.ref_name }}` и `:latest` — этот прогон переставил `:latest` на
+      сборку с `main` вместо последнего релиза (v0.0.10).
 
 ## 10. Close the change
 
