@@ -334,45 +334,63 @@ says so. Remote hosts never show one.
 ### How the numbers get in
 
 By default: not over the network, and with no credential anywhere. Claude Code already hands
-the quota to whatever `statusLine` command you configure. herdr-watch ships a
-**pass-through hook**: it records the numbers, then forwards stdin untouched to
-your real statusline command. Your own script is not modified.
+the quota to whatever `statusLine` command you configure. herdr-watch ships that
+command — **`herdr-watch-statusline`**, one small binary that renders your status
+line *and* records the quota from the same payload:
 
-Install by wrapping your existing `statusLine` command in `~/.claude/settings.json`:
+```
+Opus 5 · high | Ctx [██░░░░░░░░] 185.3k/1.0M (19%) | +1055/-37 | Cost $8.88 · 43m (api 19m) | 5h 43% (2h13m) · 7d 18%
+```
+
+Install it, then point `statusLine` at it in `~/.claude/settings.json`:
+
+```sh
+cargo install --path statusline-rust     # or download the binary from a release
+```
 
 ```json
 "statusLine": {
   "type": "command",
-  "command": "python3 /path/to/herdr-watch/scripts/herdr-watch-statusline-hook.py python3 ~/.claude/statusline.py",
+  "command": "/Users/you/.cargo/bin/herdr-watch-statusline",
   "refreshInterval": 300
 }
 ```
 
-Everything after the hook's own path is your command, run exactly as before. If
-you have no statusline yet, `... hook.py echo ""` records the quota and prints
-nothing.
+Use the **absolute** path: the shell that runs the command may not have
+`~/.cargo/bin` on its `PATH`, and the failure mode is a silently blank status line.
+
+It reads its input and nothing else — no network, no credential, no subprocess, no
+repository state. Colour thresholds are arguments (`--warn-at 70 --critical-at 90`
+matches the dashboard's own bands); `statusline-rust/README.md` lists the rest.
+
+**Already have a status line you like?** There is no wrapping mode — record
+alongside it instead:
+
+```json
+"command": "sh -c 'p=$(cat); printf %s \"$p\" | herdr-watch-statusline --capture-only; printf %s \"$p\" | ~/.claude/my-statusline.sh'"
+```
 
 `refreshInterval` is optional but recommended here. Claude Code's own statusline
 triggers are session-scoped (a new assistant message, `/compact`, a permission-mode
 change), so **quota spent by background subagents or by another session on the same
 account moves the real numbers without waking the statusline**. The timer re-runs
-the command anyway and catches that. Cost is one extra `python3` start per tick.
+the command anyway and catches that. A tick costs about 3 ms.
 
-**To remove it:** delete the wrapper prefix from that one line, and (optionally)
-`rm ~/.config/herdr-watch/claude-usage.json`. Nothing else persists.
+**To remove it:** point `statusLine.command` back at your own script, and
+(optionally) `rm ~/.config/herdr-watch/claude-usage.json`. Nothing else persists.
 
 **Several Claude Code sessions share this one file, and they are not all the same
 version.** Older ones report figures that agree neither with the account's nor with
-each other, so the hook ignores a reading that is not recognisably complete (no
-usable 5-hour window) *and* one that has fallen behind the record — a window that has
+each other, so a reading that is not recognisably complete (no usable 5-hour window)
+is ignored, and so is one that has fallen behind the record — a window that has
 already reset, or a lower utilization inside the window already recorded. Neither can
 be true of newer figures: utilization inside a window only grows, and reset times only
 move forward. Without that, the gauge flapped between sessions on every refresh tick.
 
-The hook is on an interactive path, so it is built to be invisible: any failure —
-unwritable path, malformed payload, no quota in the payload — is swallowed, stdin
-is still forwarded, and the exit status is your command's. It never writes to
-stdout itself. Cost: one extra Python start (~30 ms) per statusline refresh.
+The command is on an interactive path, so it is built not to fail visibly: any
+failure — unwritable path, malformed payload, no quota in the payload, an argument
+it does not recognise — still leaves a line on stdout, still exits successfully, and
+never writes a byte to stderr.
 
 ### Staleness is the normal state, not a bug
 
@@ -382,8 +400,8 @@ next to every reading and dims the gauge once it passes
 `herdr-watch.claude-usage.stale-after` (default 45 min) — old figures are still
 shown, marked stale, rather than silently passing for current.
 
-The capture time is **when the figures last changed**, not when the hook last ran:
-the hook leaves the file alone when the numbers come back identical. That is what
+The capture time is **when the figures last changed**, not when the command last ran:
+the file is left alone when the numbers come back identical. That is what
 keeps the indicator honest under `refreshInterval` — a timer tick happens without
 any API call in between, so the payload still carries the previous response's
 figures, and re-stamping them would present hour-old numbers as current.
@@ -391,12 +409,12 @@ figures, and re-stamping them would present hour-old numbers as current.
 So a dimmed gauge means "nothing has moved for a while", which on a quiet account is
 simply true — and harmless, since nothing is being consumed.
 
-Before the hook is installed nothing is rendered at all, and the API reports
+Before the command is installed nothing is rendered at all, and the API reports
 `NOT_CONFIGURED`. That is not an error state.
 
 ### Second source: the account API (optional, off by default)
 
-The statusline hook has one structural hole: it only sees what a **local** Claude
+The statusline source has one structural hole: it only sees what a **local** Claude
 Code session reports. Quota spent on another machine, or while no session was open,
 is invisible — the reading just ages. Anthropic's account endpoint
 (`GET /api/oauth/usage`) closes that hole, and it is also the **only** route to the
@@ -588,7 +606,8 @@ herdr-watch/
 │   └── mvnw     Maven Wrapper (3.9.9) — use if system Maven < 3.8.6
 ├── frontend/    Vite + React + TypeScript + Tailwind + shadcn/ui
 ├── handoff/     design mockups, original spec (CLAUDE_CODE_INSTRUCTIONS.md), prompt & compact-screen handoff — reference only
-├── scripts/     herdr-watch-statusline-hook.py (Claude quota capture) + maintenance helpers
+├── statusline-rust/  herdr-watch-statusline — the Claude Code status line + quota capture
+├── scripts/     maintenance helpers
 ├── README.md
 └── CLAUDE.md
 ```
@@ -602,7 +621,8 @@ herdr-watch/
 - **Tests:** backend `cd backend && ./mvnw test` (JUnit + `@QuarkusTest`; the `test`
   profile disables Quinoa and all bootstrap hosts, so no ssh/herdr is spawned).
   Frontend `cd frontend && npm test` (Vitest + Testing Library). Both run in CI.
-  The statusline hook has its own suite: `python3 scripts/test_herdr_watch_statusline_hook.py`.
+  The status line binary has its own suite, run in CI:
+  `cargo test --manifest-path statusline-rust/Cargo.toml`.
 - The frontend is driven entirely by SSE + REST — no hardcoded data.
 - Keep the Source abstraction and the one-ssh-connection-per-host model intact;
   a realtime source would slot in behind the same interface.

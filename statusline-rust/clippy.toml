@@ -1,0 +1,3 @@
+# Keep the lint configuration next to the crate so a local `cargo clippy` and the
+# CI job agree. The deny-list itself lives in src/lib.rs (design D2).
+msrv = "1.85"

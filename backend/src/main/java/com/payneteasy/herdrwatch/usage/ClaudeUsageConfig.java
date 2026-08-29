@@ -15,7 +15,7 @@ import java.util.Optional;
 @ConfigMapping(prefix = "herdr-watch.claude-usage")
 public interface ClaudeUsageConfig {
 
-    /** State-файл, который пишет statusline-хук (scripts/herdr-watch-statusline-hook.py). */
+    /** State-файл, который пишет статус-строка (statusline-rust/, бинарник herdr-watch-statusline). */
     @WithDefault("~/.config/herdr-watch/claude-usage.json")
     String stateFile();
 

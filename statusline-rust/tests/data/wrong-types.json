@@ -1,0 +1,1 @@
+{"model": {"display_name": "Opus 5"}, "context_window": {"total_input_tokens": "lots"}, "cost": {"total_cost_usd": null, "total_lines_added": true}, "rate_limits": {"five_hour": {"used_percentage": "43%"}}}

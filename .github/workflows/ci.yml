@@ -74,3 +74,29 @@ jobs:
           curl -sf -o /dev/null http://localhost:8080/api/servers
           curl -sf -o /dev/null http://localhost:8080/q/openapi
           echo "smoke OK: / serves the SPA, /api and /q/openapi respond"
+
+  # Отдельная job: статус-строка собирается своим тулчейном и её падение не должно
+  # блокировать `mvnw verify`. Здесь же впервые в CI гоняется контракт state-файла —
+  # у питоновского хука, который этот бинарник заменил, тесты запускались только руками.
+  statusline:
+    name: Status line binary (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: statusline-rust
+
+      - name: Format
+        run: cargo fmt --check --manifest-path statusline-rust/Cargo.toml
+
+      - name: Clippy
+        run: cargo clippy --manifest-path statusline-rust/Cargo.toml --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --manifest-path statusline-rust/Cargo.toml --locked

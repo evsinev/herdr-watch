@@ -65,7 +65,7 @@ herdr-watch:
     notify-blocked: true
     notify-done: true
   # Квота подписки Claude: state-файл пишет statusline-хук
-  # (scripts/herdr-watch-statusline-hook.py), мы только читаем его по mtime.
+  # (statusline-rust/ — бинарник herdr-watch-statusline), мы только читаем его по mtime.
   # poll-interval подставляется в @Scheduled(every=…), поэтому значение обязано быть
   # здесь, а не только в @WithDefault маппинга.
   claude-usage:

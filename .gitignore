@@ -10,6 +10,7 @@ frontend/dist/
 docker/quarkus-app/
 tray-macos/.build/
 tray-macos/*.app/
+statusline-rust/target/
 
 # misc
 **/.DS_Store
@@ -20,6 +21,3 @@ tray-macos/*.app/
 docs/api/openapi.json
 
 .env
-
-# Python (scripts/)
-__pycache__/

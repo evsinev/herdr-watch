@@ -1,0 +1,6 @@
+edition = "2024"
+max_width = 100
+# Let the width above govern: the default heuristics cap struct literals, function
+# calls and `let … else` at a fraction of it, which splits lines that read better
+# whole.
+use_small_heuristics = "Max"

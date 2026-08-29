@@ -1,0 +1,35 @@
+[package]
+name = "herdr-watch-statusline"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+publish = false
+description = "Claude Code status line that also records the subscription quota for herdr-watch"
+
+[lib]
+name = "herdr_watch_statusline"
+path = "src/lib.rs"
+
+[[bin]]
+name = "herdr-watch-statusline"
+path = "src/main.rs"
+
+[dependencies]
+# The only runtime dependency (design D8). The payload is a dynamic document, so
+# `Value` + defensive accessors beats derive; everything else this binary needs
+# (fsync, rename, mkdir -p, mode bits) is already in std.
+serde_json = { version = "1", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+# `panic = "abort"` is DELIBERATELY ABSENT (design D2). This binary runs on the
+# interactive path of the operator's editor: a panic must unwind into catch_unwind
+# and still leave a line on stdout and a zero exit status. With abort it would die
+# on SIGABRT — no line, non-zero status, possibly a shell message. Do not "optimize"
+# this back in.
