@@ -186,6 +186,88 @@ class RegistryTest {
         assertEquals(first, seen.get(0).data());
     }
 
+    // --- помодельные окна едут отдельно от победителя ---
+
+    private static final List<ClaudeUsage.ModelWindow> FABLE =
+            List.of(new ClaudeUsage.ModelWindow("Fable", 14, 1788206399L));
+
+    private static ClaudeUsage accountReading(long capturedAt, int fivePercent,
+                                              List<ClaudeUsage.ModelWindow> models) {
+        return ClaudeUsage.ok(UsageSource.ACCOUNT_API, capturedAt,
+                new ClaudeUsage.Window(fivePercent, 1787803200L), null, models);
+    }
+
+    @Test
+    void modelsSurviveWhenTheOtherSourceWinsOnFreshness() {
+        // Ровно то, что видно вживую: хук пишет чаще пятиминутного опроса и выигрывает,
+        // а помодельные окна есть только у аккаунт-API. Без переноса Fable мигал бы.
+        Registry r = new Registry();
+        r.updateClaudeUsage(accountReading(2000L, 22, FABLE));
+        r.updateClaudeUsage(reading(UsageSource.STATUSLINE, 3000L, 33));
+
+        ClaudeUsage published = r.claudeUsage();
+        assertEquals(UsageSource.STATUSLINE, published.source(), "победитель по свежести не меняется");
+        assertEquals(33, published.windows().fiveHour().usedPercent());
+        assertEquals(FABLE, published.models(), "разбивка по моделям должна пережить смену победителя");
+    }
+
+    @Test
+    void staleAccountReadingStopsSupplyingModels() {
+        // Pull сломался — разбивка исчезает вместе с ним, а не застывает навсегда.
+        Registry r = new Registry();
+        r.updateClaudeUsage(accountReading(2000L, 22, FABLE));
+        r.updateClaudeUsage(reading(UsageSource.STATUSLINE, 3000L, 33));
+        r.updateClaudeUsage(accountReading(2000L, 22, FABLE).stale("offline"));
+
+        assertEquals(UsageSource.STATUSLINE, r.claudeUsage().source());
+        assertTrue(r.claudeUsage().models().isEmpty(), "устаревшие помодельные окна не носим");
+    }
+
+    @Test
+    void carriedModelsDoNotOverrideTheWinnersOwn() {
+        Registry r = new Registry();
+        r.updateClaudeUsage(accountReading(3000L, 22, FABLE));
+
+        assertEquals(UsageSource.ACCOUNT_API, r.claudeUsage().source());
+        assertEquals(FABLE, r.claudeUsage().models());
+    }
+
+    @Test
+    void pushOnlyStillPublishesNoModels() {
+        // Дефолт продукта: аккаунт-API не запускался вовсе — переносить нечего.
+        Registry r = new Registry();
+        r.updateClaudeUsage(reading(UsageSource.STATUSLINE, 1000L, 11));
+
+        assertTrue(r.claudeUsage().models().isEmpty());
+    }
+
+    @Test
+    void carryingModelsStillSuppressesUnchangedRepublication() {
+        Registry r = new Registry();
+        r.updateClaudeUsage(accountReading(2000L, 22, FABLE));
+        r.updateClaudeUsage(reading(UsageSource.STATUSLINE, 3000L, 33));
+
+        List<StreamEvent> seen = subscribe(r);
+        r.updateClaudeUsage(reading(UsageSource.STATUSLINE, 3000L, 33));   // тот же тик
+        r.updateClaudeUsage(accountReading(2000L, 22, FABLE));             // тот же опрос
+
+        assertTrue(seen.isEmpty(), "ничего не изменилось — событий быть не должно: " + seen);
+    }
+
+    @Test
+    void newModelFiguresReachTheGaugeWhileTheOtherSourceKeepsWinning() {
+        Registry r = new Registry();
+        r.updateClaudeUsage(accountReading(2000L, 22, FABLE));
+        r.updateClaudeUsage(reading(UsageSource.STATUSLINE, 5000L, 33));
+
+        r.updateClaudeUsage(accountReading(3000L, 22,
+                List.of(new ClaudeUsage.ModelWindow("Fable", 15, 1788206399L))));
+
+        assertEquals(UsageSource.STATUSLINE, r.claudeUsage().source());
+        assertEquals(15, r.claudeUsage().models().get(0).usedPercent(),
+                "обновление разбивки обязано доезжать, даже когда победитель прежний");
+    }
+
     @Test
     void sourceIsNeverNull() {
         Registry r = new Registry();

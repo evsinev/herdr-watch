@@ -104,4 +104,16 @@ public record ClaudeUsage(
     public ClaudeUsage stale(String reason) {
         return new ClaudeUsage(State.STALE, source, capturedAt, reason, windows, models);
     }
+
+    /**
+     * Тот же снапшот с подставленными помодельными окнами.
+     *
+     * <p>Нужно потому, что помодельные окна отдаёт ТОЛЬКО аккаунт-API, а публикуемое
+     * показание выбирается по свежести: под {@code auto} statusline обновляется чаще
+     * (на каждое движение цифр) и почти всегда выигрывает у пятиминутного опроса. Без
+     * переноса строка модели мигала бы, появляясь на секунды раз в пять минут.
+     */
+    public ClaudeUsage withModels(List<ModelWindow> models) {
+        return new ClaudeUsage(state, source, capturedAt, error, windows, models);
+    }
 }

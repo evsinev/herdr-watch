@@ -22,6 +22,8 @@ SshSource   (1 ssh conn/host) ──┼─► Registry (in-memory, Mutiny broadc
 
 statusline hook (Claude Code) ─► ~/.config/herdr-watch/claude-usage.json ─► ClaudeUsageReader (mtime poll)
                                                                               └─► Registry (claude_usage)
+Claude Code credential (read-only) ─► ClaudeUsagePullReader ─► api.anthropic.com/api/oauth/usage
+                                       (optional, off by default) └─► Registry (claude_usage)
 ```
 
 - **Sources** (`backend/.../source/`): `Source` interface + `AbstractHerdrSource`
@@ -30,11 +32,19 @@ statusline hook (Claude Code) ─► ~/.config/herdr-watch/claude-usage.json ─
   `SshSource` (`ssh …`) and `LocalSource` (`bash -lc …`, current user, no ssh).
   `SourceManager` starts/stops/restarts one per host (hot (re)connect).
 - **Registry** — single source of truth (in-memory `ConcurrentHashMap` + Mutiny
-  `BroadcastProcessor`); emits `snapshot` / `host_update` / `host_remove`. Also fires
+  `BroadcastProcessor`); emits `snapshot` / `host_update` / `host_remove`. For the
+  quota it keeps the latest reading **per source** and publishes the most recently
+  *observed* one — not «pull wins»: pull polls on an interval, so a statusline
+  reading can legitimately be newer. Also fires
   a CDI `FrameApplied` event per CONNECTED frame → `TelegramNotifier` diffs agent
   statuses and notifies on transition to `blocked`/`done`.
-- **Claude quota** (`usage/`): `ClaudeUsageReader` (`@Scheduled` mtime poll of the
-  state file; parses only when mtime changed) → `Registry.updateClaudeUsage` →
+- **Claude quota** (`usage/`): two sources, one snapshot. **push** —
+  `ClaudeUsageReader` (`@Scheduled` mtime poll of the state file; parses only when
+  mtime changed). **pull** (`usage/pull/`, optional, `source: push|pull|auto`,
+  default `push`) — `ClaudeUsagePullReader` polls `GET /api/oauth/usage` with the
+  credential Claude Code already holds (`CredentialSource` chain: keychain → file),
+  `PollPolicy` decides when the next attempt is allowed, `UsageResponseMapper`
+  normalises the body. Both feed `Registry.updateClaudeUsage` →
   `claude_usage` SSE event. `ClaudeUsage` is the internal model (nullable windows,
   `NOT_CONFIGURED`/`OK`/`STALE`); `UsageSeverity` holds the 70/90 % bands shared with
   the UI and with `severityCode` in the Snapshot API. The file is written by
@@ -80,10 +90,31 @@ statusline hook (Claude Code) ─► ~/.config/herdr-watch/claude-usage.json ─
 - The hook rewrites the state file **only when the figures change**, so `capturedAt` means
   «когда показания сдвинулись», не «когда хук отработал». Не «чинить» это: с
   `statusLine.refreshInterval` хук зовут по таймеру без API-вызова, и штамповка времени на
-  каждый запуск выдавала бы старые цифры за свежие — индикатор устаревания умирает. An absent window is `null`/omitted, never zero. The Snapshot API forbids
+  каждый запуск выдавала бы старые цифры за свежие — индикатор устаревания умирает.
+- State-файл делят сессии Claude Code **разных версий**, и отставшая портит запись. Хук
+  принимает показание, только если в нём есть пригодное `five_hour` И оно не откатывается
+  назад: окно с `resets_at` раньше записанного (уже сброшенное) и падение процента внутри
+  ОДНОГО окна отвергаются. Опора — свойства данных, а не версии клиента: утилизация внутри
+  окна не убывает, время сброса движется только вперёд. An absent window is `null`/omitted, never zero. The Snapshot API forbids
   `null` (§3.4), so `SnapshotProjection.projectUsage` omits absent windows from the array.
 - Secrets (Telegram token/chat id) come from **env only** (`TELEGRAM_*`), never the
   state file or UI.
+- The pull source reads the Claude Code credential and **never** writes, refreshes or
+  deletes it. Two traps worth never repeating:
+  **(1)** the keychain service `Claude Code-credentials` holds **several** items —
+  select by evidence (unexpired `expiresAt`, `user:profile` in `scopes`), never by
+  store ordering; looking up by service alone returns the expired one and produced a
+  wrong conclusion that stood for a whole change cycle. `expiresAt` is in
+  **milliseconds**.
+  **(2)** the backoff cap **must exceed the endpoint's penalty window** (~1300 s
+  observed) — a comfortable-looking 5 m cap means the source retries inside the
+  penalty forever and never recovers.
+- `impersonate-claude-cli` **fails closed**: with `source: pull|auto` and the flag
+  `false` the pull source does not start and issues no request. Never «just send our
+  own User-Agent» — that lands in a much stricter rate-limit bucket.
+- `source` decides what is **published**, not only who polls: under `source: pull`
+  the statusline reader stays silent (spec: a recorded statusline reading is not
+  published when only the account API is selected).
 - Native: any type serialized via a hand-rolled `ObjectMapper` or reachable only via
   `Object` (e.g. `StreamEvent.data`) must be added to `NativeReflectionConfig`
   (`@RegisterForReflection`). Use GraalVM for JDK 21 (matches Quarkus 3.15).
@@ -101,7 +132,10 @@ statusline hook (Claude Code) ─► ~/.config/herdr-watch/claude-usage.json ─
 
 ## Key files
 
-Backend: `usage/{ClaudeUsage,ClaudeUsageConfig,ClaudeUsageReader,UsageSeverity}.java`,
+Backend: `usage/{ClaudeUsage,ClaudeUsageConfig,ClaudeUsageReader,UsageSeverity,UsageSource}.java`,
+`usage/pull/{ClaudeUsagePullReader,ClaudeUsageApiClient,PollPolicy,UsageResponseMapper,
+ClaudeCredential,KeychainCredentialSource,FileCredentialSource,ChainedCredentialSource,
+ClaudeCliVersion,PullOutcome}.java`,
 `source/{Source,AbstractHerdrSource,SshSource,LocalSource,SourceManager}.java`,
 `Registry.java`, `FrameApplied.java`, `HostStore.java`, `HostsConfig.java`,
 `http/{StreamResource,ServersResource,ClaudeUsageResource,SnapshotResource}.java`,

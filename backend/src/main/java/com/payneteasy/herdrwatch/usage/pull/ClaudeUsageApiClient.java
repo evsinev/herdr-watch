@@ -59,8 +59,10 @@ public class ClaudeUsageApiClient {
         try {
             response = http.send(request, HttpResponse.BodyHandlers.ofString());
         } catch (IOException e) {
-            // Сообщение исключения в лог пойдёт, токен в него не входит.
-            return new Fetched(PullOutcome.Result.of(PullOutcome.OFFLINE, e.toString()), null);
+            // Текст чужого исключения уходит в лог как есть, поэтому вычищаем из него
+            // токен: единственное место, где мы не контролируем содержимое detail.
+            return new Fetched(PullOutcome.Result.of(PullOutcome.OFFLINE,
+                    redact(e.toString(), credential.accessToken())), null);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return new Fetched(PullOutcome.Result.of(PullOutcome.OFFLINE, "interrupted"), null);
@@ -91,6 +93,12 @@ public class ClaudeUsageApiClient {
             return new Fetched(PullOutcome.Result.of(PullOutcome.SCHEMA_CHANGED,
                     "200 but unparseable: " + e), null);
         }
+    }
+
+    /** Токен не должен просочиться в diagnostics ни одним путём (дизайн D4). */
+    static String redact(String detail, String token) {
+        if (detail == null || token == null || token.isEmpty()) return detail;
+        return detail.replace(token, "***");
     }
 
     /** Retry-After в дельта-секундах — единственная форма, замеченная у этого эндпоинта. */

@@ -27,6 +27,7 @@ import static org.hamcrest.Matchers.emptyOrNullString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -87,7 +88,13 @@ class SnapshotResourceTest {
     @AfterEach
     void cleanup() {
         SEEDED.forEach(registry::remove);
-        registry.updateClaudeUsage(ClaudeUsage.none());   // квота — общее состояние
+        // Квота — общее состояние, и Registry держит слот на КАЖДЫЙ источник. Одного
+        // none() мало: показание с временем наблюдения в чужом слоте переживёт его и
+        // выиграет в следующем тесте (и живой statusline-ридер дев-машины — тоже).
+        for (UsageSource s : UsageSource.values()) {
+            registry.updateClaudeUsage(ClaudeUsage.notConfigured(s));
+        }
+        registry.updateClaudeUsage(ClaudeUsage.none());
     }
 
     // --- golden per profile (§3.5): состав полей фиксирован → тест исчерпывающий ---
@@ -375,6 +382,32 @@ class SnapshotResourceTest {
                     .body("severityCode", equalTo(null))
                     .body("windows", equalTo(null))
                     .body("capturedAt", equalTo(null));
+        }
+    }
+
+    @Test
+    void perModelWindowsLeaveTheAgentsEndpointByteIdentical() throws Exception {
+        // §7 / дизайн D7: помодельные окна и источник — добавка на СВОЁМ эндпоинте.
+        // Профили /agents заморожены, поэтому сверяем их с теми же golden-файлами
+        // побайтно, а не выборочными полями: любая протечка новых полей всплывёт.
+        registry.updateClaudeUsage(ClaudeUsage.ok(UsageSource.ACCOUNT_API, 1787797108L,
+                new ClaudeUsage.Window(10, 1787803200L),
+                new ClaudeUsage.Window(34, 1788206400L),
+                List.of(new ClaudeUsage.ModelWindow("Fable", 14, 1788206399L),
+                        new ClaudeUsage.ModelWindow("Никогда-не-виданная", 3, 1788206399L))));
+
+        assertMatchesGolden("full", "full.json");
+        assertMatchesGolden("compact", "compact.json");
+        assertMatchesGolden("status", "status.json");
+
+        for (String view : List.of("full", "compact", "status")) {
+            String raw = given().when().get(AGENTS + "?view=" + view)
+                    .then().statusCode(200)
+                    .body("protocolVersion", equalTo(1))
+                    .extract().asString();
+            assertFalse(raw.contains("Fable"), "помодельное окно протекло в профиль " + view);
+            assertFalse(raw.contains("ACCOUNT_API"), "источник квоты протёк в профиль " + view);
+            assertFalse(raw.contains("\"models\""), "поле models протекло в профиль " + view);
         }
     }
 

@@ -333,7 +333,7 @@ says so. Remote hosts never show one.
 
 ### How the numbers get in
 
-Not over the network, and with no credential anywhere. Claude Code already hands
+By default: not over the network, and with no credential anywhere. Claude Code already hands
 the quota to whatever `statusLine` command you configure. herdr-watch ships a
 **pass-through hook**: it records the numbers, then forwards stdin untouched to
 your real statusline command. Your own script is not modified.
@@ -361,6 +361,14 @@ the command anyway and catches that. Cost is one extra `python3` start per tick.
 **To remove it:** delete the wrapper prefix from that one line, and (optionally)
 `rm ~/.config/herdr-watch/claude-usage.json`. Nothing else persists.
 
+**Several Claude Code sessions share this one file, and they are not all the same
+version.** Older ones report figures that agree neither with the account's nor with
+each other, so the hook ignores a reading that is not recognisably complete (no
+usable 5-hour window) *and* one that has fallen behind the record — a window that has
+already reset, or a lower utilization inside the window already recorded. Neither can
+be true of newer figures: utilization inside a window only grows, and reset times only
+move forward. Without that, the gauge flapped between sessions on every refresh tick.
+
 The hook is on an interactive path, so it is built to be invisible: any failure —
 unwritable path, malformed payload, no quota in the payload — is swallowed, stdin
 is still forwarded, and the exit status is your command's. It never writes to
@@ -386,6 +394,114 @@ simply true — and harmless, since nothing is being consumed.
 Before the hook is installed nothing is rendered at all, and the API reports
 `NOT_CONFIGURED`. That is not an error state.
 
+### Second source: the account API (optional, off by default)
+
+The statusline hook has one structural hole: it only sees what a **local** Claude
+Code session reports. Quota spent on another machine, or while no session was open,
+is invisible — the reading just ages. Anthropic's account endpoint
+(`GET /api/oauth/usage`) closes that hole, and it is also the **only** route to the
+**per-model weekly windows** (Fable, Opus, …) that the gauge shows as thin rows
+under the two bars.
+
+It is off by default, because it needs a credential and an outbound request — the
+two things the shipped design deliberately did without.
+
+```yaml
+herdr-watch:
+  claude-usage:
+    source: push        # push (default) | pull | auto
+```
+
+| `source` | what runs | what you get |
+|---|---|---|
+| `push` | statusline hook only | today's behaviour: no credential read, no outbound request |
+| `pull` | account API only | figures that advance without a local session, plus per-model windows; the hook's readings are **not** published |
+| `auto` | both | each publishes independently and the **most recently observed** reading wins; the gauge labels which one you are looking at |
+
+Under `auto` the two sources degrade independently: if the endpoint is unreachable
+or rate-limiting, its last reading is served marked stale and the hook keeps
+publishing — and vice versa. Every reading carries its provenance (`statusline` /
+`account api`) next to the capture time in the UI, and as `source` on the SSE event,
+`GET /api/claude-usage` and `GET /api/v1/snapshot/usage`.
+
+**Per-model windows are not tied to the winner.** They exist only in the account API's
+answer, while the hook usually wins the freshness comparison — it updates whenever the
+figures move, against a 5-minute poll. So the model rows are carried from the newest
+*usable* account reading and stay put while the statusline reading is the one on
+screen; the two windows, the source label and the capture time still belong to the
+winner. When the account API degrades, its reading is marked stale and the model rows
+go with it, rather than freezing on screen forever.
+
+### Turning it on without touching the jar
+
+Every key below is ordinary Quarkus config, so **environment variables work** — the
+same route `TELEGRAM_*` and `QUARKUS_HTTP_PORT` already take. The name is the config
+key uppercased with every non-alphanumeric character replaced by `_`:
+
+```bash
+export HERDR_WATCH_CLAUDE_USAGE_SOURCE=auto                        # push | pull | auto
+export HERDR_WATCH_CLAUDE_USAGE_PULL_IMPERSONATE_CLAUDE_CLI=true   # pull will not start without it
+java -jar herdr-watch-1.0.0-SNAPSHOT-runner.jar
+```
+
+| config key | environment variable |
+|---|---|
+| `herdr-watch.claude-usage.source` | `HERDR_WATCH_CLAUDE_USAGE_SOURCE` |
+| `herdr-watch.claude-usage.pull.impersonate-claude-cli` | `HERDR_WATCH_CLAUDE_USAGE_PULL_IMPERSONATE_CLAUDE_CLI` |
+| `herdr-watch.claude-usage.pull.poll-interval` | `HERDR_WATCH_CLAUDE_USAGE_PULL_POLL_INTERVAL` |
+| `herdr-watch.claude-usage.pull.credentials-file` | `HERDR_WATCH_CLAUDE_USAGE_PULL_CREDENTIALS_FILE` |
+
+System properties work the same way and win over the environment:
+`-Dherdr-watch.claude-usage.source=auto`.
+
+**Confirm it started** — one INFO line at boot names the endpoint and the fingerprint:
+
+```
+claude usage pull: enabled, endpoint https://api.anthropic.com/api/oauth/usage, poll 5m (client fingerprint: claude-cli/2.1.251)
+```
+
+A WARN naming `impersonate-claude-cli=false` instead means the source refused to start
+(see below) — that is the fail-closed path, not a malfunction. No line at all means
+`source` never reached the app.
+
+**`impersonate-claude-cli` — read this before turning pull on.**
+
+```yaml
+    pull:
+      impersonate-claude-cli: false   # default; pull will not start without it
+```
+
+The endpoint keys its rate-limit bucket on the **client fingerprint**. Requests that
+do not carry Claude Code's `User-Agent` land in a far stricter bucket
+([claude-code#30930](https://github.com/anthropics/claude-code/issues/30930)), so a
+usable poll means sending `claude-cli/<version> (external, cli)` — that is,
+presenting as a first-party client that you are not.
+
+That is a decision worth making knowingly, so it is a **separate flag** from
+`source`, and it **fails closed**: with `source: pull`/`auto` and this flag left
+`false`, the pull source refuses to start, logs why, and issues no request. It will
+never quietly send our own User-Agent instead.
+
+**The credential is read, never touched.** The pull source reuses the OAuth token
+Claude Code already holds — macOS Keychain (service `Claude Code-credentials`),
+otherwise `~/.claude/.credentials.json`. It never writes, refreshes or deletes it;
+rotation stays Claude Code's job. On a `401` the store is simply re-read on the next
+tick, so a rotation is picked up without a restart. The token never reaches a log
+line, at any level. If the store holds several entries — it usually does — the one
+that is unexpired and carries the `user:profile` scope is selected; a stale entry is
+reported as "not configured" rather than retried.
+
+**Rate limits are taken seriously.** A rejection answered with `Retry-After` always
+beats our own schedule (we wait that long plus a margin), and the backoff ceiling is
+deliberately above the endpoint's longest observed penalty (~22 min) — a lower cap
+would mean the source could never recover. Polling is 5 min when healthy, never
+overlapping, and a rate-limited pull degrades the gauge only: host frames, health and
+everything else are untouched.
+
+**To remove the credential dependency again:** set `source: push` (or delete the
+`source` line). Nothing persists, nothing to unwind — the next start reads no
+credential and makes no request.
+
 ### Configuration
 
 ```yaml
@@ -394,6 +510,16 @@ herdr-watch:
     state-file: ~/.config/herdr-watch/claude-usage.json   # what the hook writes
     poll-interval: 5s                                     # mtime check; parses only on change
     stale-after: 45m                                      # age at which a reading is marked stale
+    source: push                                          # push | pull | auto (see above)
+    pull:                                                 # only used when source = pull | auto
+      impersonate-claude-cli: false                       # fails closed: pull will not start without it
+      endpoint: https://api.anthropic.com/api/oauth/usage
+      keychain-service: "Claude Code-credentials"         # macOS
+      credentials-file: ~/.claude/.credentials.json       # headless hosts
+      poll-interval: 5m
+      backoff-floor: 1m
+      backoff-cap: 2h                                     # MUST exceed the endpoint's penalty window
+      retry-margin: 30s                                   # added on top of a server Retry-After
 ```
 
 Colour bands (70 % warning, 90 % critical) live in `usage/UsageSeverity.java` and

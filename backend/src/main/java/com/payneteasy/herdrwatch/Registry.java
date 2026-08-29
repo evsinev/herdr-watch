@@ -128,10 +128,30 @@ public class Registry {
         if (usage == null) return;
         bySource.put(usage.source(), usage);
 
-        ClaudeUsage winner = pickWinner();
+        ClaudeUsage winner = withCarriedModels(pickWinner());
         if (winner == null || winner.equals(claudeUsage)) return;
         claudeUsage = winner;
         emit("claude_usage", winner);
+    }
+
+    /**
+     * Помодельные окна едут ОТДЕЛЬНО от победителя по свежести.
+     *
+     * <p>Их отдаёт только аккаунт-API, а statusline обновляется на каждое движение цифр и
+     * потому почти всегда свежее пятиминутного опроса. Если бы {@code models} ехали
+     * вместе с победителем, строка модели мигала бы: несколько секунд раз в пять минут.
+     *
+     * <p>Окна 5h/7d, {@code source} и {@code capturedAt} при этом НЕ трогаются — они
+     * по-прежнему принадлежат победителю, и метка источника в UI продолжает означать
+     * ровно то, что означала. Устаревшее показание аккаунт-API моделей не даёт: если
+     * pull сломался, разбивка исчезает вместе с ним, а не застывает навсегда.
+     */
+    private ClaudeUsage withCarriedModels(ClaudeUsage winner) {
+        if (winner == null || !winner.models().isEmpty()) return winner;
+        ClaudeUsage account = bySource.get(UsageSource.ACCOUNT_API);
+        if (account == null || account == winner) return winner;
+        if (account.state() != ClaudeUsage.State.OK || account.models().isEmpty()) return winner;
+        return winner.withModels(account.models());
     }
 
     /** Показание с самым поздним временем наблюдения; без времени — заведомо слабее. */

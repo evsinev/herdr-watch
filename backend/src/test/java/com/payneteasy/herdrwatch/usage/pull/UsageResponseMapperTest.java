@@ -26,6 +26,36 @@ class UsageResponseMapperTest {
         return M.readTree(s);
     }
 
+    /**
+     * Вторая живая фикстура, снятая на четыре часа позже первой (задача 1.4).
+     * Набор ключей верхнего уровня тот же (18 из 18), легаси-ключи
+     * {@code seven_day_<model>} по-прежнему все {@code null} — а вот
+     * {@code resets_at} у ПРОСТАИВАЮЩЕГО окна приходит {@code null}
+     * ({@code five_hour: utilization 0.0, resets_at null}, в {@code limits[]} —
+     * {@code kind=session, percent=0, resets_at=null, is_active=false}).
+     *
+     * <p>Значит, «окно есть» и «окно отчиталось временем сброса» — разные вещи, и
+     * форма это не гарантирует. Сейчас окно без времени сброса считается
+     * НЕОТЧИТАВШИМСЯ: выдумывать момент сброса нельзя, а {@code resetsAt = 0}
+     * означало бы «сбрасывается прямо сейчас». Недельное окно и помодельные при
+     * этом не страдают.
+     */
+    @Test
+    void idleWindowArrivesWithoutAResetTime() throws Exception {
+        try (InputStream in = getClass().getResourceAsStream("/usage-pull/oauth-usage-live-2.json")) {
+            assertNotNull(in, "вторая фикстура должна лежать в test resources");
+            ClaudeUsage u = UsageResponseMapper.map(M.readTree(in), NOW);
+
+            assertNotNull(u);
+            assertEquals(UsageSource.ACCOUNT_API, u.source());
+            assertNull(u.windows().fiveHour(), "простаивающее окно без resets_at — не 0%, а «нет данных»");
+            assertEquals(37, u.windows().sevenDay().usedPercent());
+            assertEquals(1, u.models().size());
+            assertEquals("Fable", u.models().get(0).model());
+            assertEquals(14, u.models().get(0).usedPercent());
+        }
+    }
+
     @Test
     void mapsTheRealCapturedResponse() throws Exception {
         try (InputStream in = getClass().getResourceAsStream("/usage-pull/oauth-usage-live-1.json")) {

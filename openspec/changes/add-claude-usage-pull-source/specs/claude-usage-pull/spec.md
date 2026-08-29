@@ -152,6 +152,14 @@ frozen response profile, and MUST NOT change the protocol version.
 - **WHEN** the account API reports none
 - **THEN** none are published, and the session and weekly windows are unaffected
 
+#### Scenario: The other source produced the published reading
+- **WHEN** both sources are selected and the reading published is the statusline one, while a usable account-API reading exists
+- **THEN** the model-scoped windows from that account-API reading are still published, so a breakdown available only from one source does not appear and disappear with the freshness comparison
+
+#### Scenario: The source of model-scoped windows degrades
+- **WHEN** the account-API reading is marked stale
+- **THEN** the model-scoped windows are no longer published, rather than being shown indefinitely as though current
+
 #### Scenario: Existing consumers unaffected
 - **WHEN** a client that predates per-model windows reads the quota
 - **THEN** the session and weekly windows it already understood are unchanged, and the reported protocol version is unchanged

@@ -45,6 +45,12 @@ public class ClaudeUsageReader {
 
     Path file;
     Duration staleAfter;
+    /**
+     * Выбран ли push вообще. При {@code source: pull} statusline-ридер молчит: спека
+     * требует, чтобы при выборе одного только аккаунт-API записанное статуслайном
+     * показание НЕ публиковалось. Файл при этом не трогаем — он не наш.
+     */
+    private boolean publishing = true;
 
     /** Последний успешно разобранный файл (без учёта возраста) — null, если такого не было. */
     private ClaudeUsage parsed;
@@ -65,6 +71,12 @@ public class ClaudeUsageReader {
     void init() {
         file = resolvePath(config.stateFile());
         staleAfter = parseDuration(config.staleAfter(), Duration.ofMinutes(45));
+        publishing = config.source().usesPush();
+        if (!publishing) {
+            log.info("claude usage: source={} — statusline-источник выключен, файл {} не читаем",
+                    config.source().name().toLowerCase(), file);
+            return;
+        }
         log.info("claude usage: watching {} (stale after {})", file, staleAfter);
     }
 
@@ -81,6 +93,7 @@ public class ClaudeUsageReader {
 
     /** Один цикл: перечитать при необходимости, пересчитать возраст, отдать в Registry. */
     void tick() {
+        if (!publishing) return;
         try {
             registry.updateClaudeUsage(read(Instant.now()));
         } catch (Exception e) {

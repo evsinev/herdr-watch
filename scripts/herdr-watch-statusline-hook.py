@@ -38,6 +38,12 @@ carrying only `seven_day` with values that disagree with the account's own figur
 Leaving the record untouched beats letting a stale client overwrite a good reading. A payload with no usable window leaves the previous
 record untouched (normal before the session's first API response).
 
+A reading that has FALLEN BEHIND the record is ignored too, for the same reason: a
+lagging session reports a window that has already reset, or a lower utilization
+inside the window the record already covers. Neither can be true of newer figures —
+utilization inside a fixed window only grows, and reset times only move forward — so
+a reading that goes backwards is a stale client talking, not news.
+
 The file is rewritten ONLY when the figures actually change, so `capturedAt` means
 "when these numbers were last seen to move" and can never overstate freshness.
 That matters once `statusLine.refreshInterval` is set: those ticks re-run us on a
@@ -136,6 +142,40 @@ def unchanged(new, existing):
     return all(existing.get(name) == new.get(name) for name in WINDOWS)
 
 
+def regresses(new, existing):
+    """True when this reading is BEHIND the record — an older window, or a step back inside one.
+
+    Observed live over 14 minutes on one machine: sessions of different versions wrote
+    5h 22 % / 6 % / 16 % / 33 % in turn, two of them carrying a `resets_at` five hours
+    stale — a window that had already reset. Requiring a usable `five_hour` (above)
+    stops the bar from vanishing, but not the figures from flapping between sessions.
+
+    Two facts make lagging readings recognisable without tracking versions:
+    utilization inside one window only ever grows, and a window's reset time only ever
+    moves forward. So a reading that goes backwards on either count is behind, and the
+    record it would overwrite is the better one.
+
+    Compared per window and only where both sides have it: a window the payload does
+    not carry says nothing about lag.
+    """
+    if not isinstance(existing, dict):
+        return False
+    for name in WINDOWS:
+        fresh = new.get(name)
+        recorded = existing.get(name)
+        if not isinstance(fresh, dict) or not isinstance(recorded, dict):
+            continue
+        resets = number(recorded.get("resets_at"))
+        used = number(recorded.get("used_percentage"))
+        if resets is None or used is None:
+            continue                        # запись битая — сравнивать не с чем
+        if fresh["resets_at"] < resets:
+            return True                     # окно, которое уже сбросилось
+        if fresh["resets_at"] == resets and fresh["used_percentage"] < used:
+            return True                     # внутри одного окна утилизация не убывает
+    return False
+
+
 def write_atomically(path, rec):
     """Temp file in the target directory + rename — a reader never sees a partial write."""
     directory = os.path.dirname(path)
@@ -163,7 +203,12 @@ def capture(data):
         if new is None:
             return                      # нет rate_limits — прошлую запись не трогаем
         path = state_file()
-        if unchanged(new, read_existing(path)):
+        existing = read_existing(path)
+        if regresses(new, existing):
+            # Отставшая сессия: окно уже сброшено или процент откатился назад. Записи
+            # не касаемся вовсе — иначе цифры прыгают туда-сюда на каждом тике.
+            return
+        if unchanged(new, existing):
             # Цифры те же — файл (и его mtime) не трогаем вовсе. capturedAt обязан
             # означать «когда показания в последний раз сдвинулись»: с refreshInterval
             # хук зовут по таймеру, а rate_limits в payload свежее последнего ответа

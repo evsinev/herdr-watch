@@ -86,6 +86,18 @@ per-source retention: keep the latest reading from each source, publish the winn
 Otherwise two sources at different cadences would flap the published snapshot back
 and forth.
 
+**Amended after live use:** freshest-wins governs the two windows, `source` and
+`capturedAt` — but **not** `models`. Per-model windows exist only in the account API's
+answer, and the statusline source updates on every movement of the figures, so under
+`auto` it wins nearly always against a 5-minute poll. Carrying `models` with the winner
+made the per-model rows blink: visible for seconds once every five minutes, absent the
+rest of the time — which is how the gauge behaved on the reference machine the first
+time `auto` was switched on. So the published snapshot takes `models` from the newest
+**usable** `ACCOUNT_API` reading regardless of who won. Provenance is unharmed: the
+label still names the source of the figures it labels, and per-model windows have only
+ever had one possible origin. A `STALE` account reading supplies nothing — a breakdown
+frozen on screen forever would be worse than none.
+
 ### D3. The fingerprint opt-in is a separate flag, and it fails closed
 
 ```
@@ -178,6 +190,14 @@ Parsing `limits[]`: prefer it over the legacy top-level `seven_day_<model>` keys
 which the survey reports as nulled out in newer responses. Match on
 `scope.model.display_name`, carried through as-is rather than mapped to an enum — an
 unknown model must survive to the UI.
+
+**A window can arrive without a reset time.** The second live capture (task 1.4)
+showed an idle 5-hour window as `{utilization: 0.0, resets_at: null}`, and its
+`limits[]` twin as `{kind: session, percent: 0, resets_at: null, is_active: false}`.
+Decided: such a window counts as **not reported** — no bar rather than a bar reading
+0 %. A reset time cannot be invented, and `resetsAt = 0` would render as «resetting
+right now», which is worse than silence. The weekly and per-model windows are
+unaffected, so the gauge keeps saying something true.
 
 `utilization` is a float and `resets_at` an ISO-8601 string here, unlike the
 statusline payload's integer-ish percent and epoch seconds. Both are normalised at the

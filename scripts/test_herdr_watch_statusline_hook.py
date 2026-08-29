@@ -139,6 +139,10 @@ class HookTest(unittest.TestCase):
     def test_fractional_values_are_rounded_to_the_nearest_percent(self):
         for raw, expected in ((7.4, 7), (7.6, 8), (0.2, 0), (99.5, 100)):
             with self.subTest(raw=raw):
+                # Каждая итерация — с чистого листа: иначе 8 → 0 в одном и том же окне
+                # отвергается как откат, и тест про округление мерил бы не округление.
+                if os.path.exists(self.state):
+                    os.remove(self.state)
                 payload = json.dumps({
                     "rate_limits": {"five_hour": {"used_percentage": raw, "resets_at": 1787883600}}
                 }).encode()
@@ -311,6 +315,117 @@ class HookTest(unittest.TestCase):
         rec = self.read_state()
         self.assertEqual(rec["five_hour"]["used_percentage"], 12)
         self.assertEqual(rec["seven_day"]["used_percentage"], 34)
+
+    # --- отставшая сессия не откатывает запись назад ---
+    #
+    # Продолжение той же беды: требование five_hour отсекает старую ФОРМУ, но не
+    # старые ЦИФРЫ. Снято живьём за 14 минут на одной машине — 5h 22 / 6 / 16 / 33,
+    # причём у 16 и 33 resets_at на пять часов позади (окно уже сбросилось).
+
+    GOOD = {
+        "rate_limits": {
+            "five_hour": {"used_percentage": 22, "resets_at": 1787883600},
+            "seven_day": {"used_percentage": 35, "resets_at": 1788206400},
+        }
+    }
+
+    def test_reading_from_an_already_reset_window_is_ignored(self):
+        run(json.dumps(self.GOOD).encode(), self.state)
+        good, before_mtime = self.read_state(), self.mtime_ns()
+
+        lagging = json.dumps({          # ровно то, что писала отставшая сессия
+            "rate_limits": {
+                "five_hour": {"used_percentage": 16, "resets_at": 1787865600},
+                "seven_day": {"used_percentage": 30, "resets_at": 1788206400},
+            }
+        }).encode()
+        out, _, rc = run(lagging, self.state)
+
+        self.assertEqual(out, lagging)          # прозрачность не пострадала
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.read_state(), good, "окно, которое уже сбросилось, не показание")
+        self.assertEqual(self.mtime_ns(), before_mtime, "файл вообще не должен трогаться")
+
+    def test_step_back_inside_the_same_window_is_ignored(self):
+        run(json.dumps(self.GOOD).encode(), self.state)
+        good, before_mtime = self.read_state(), self.mtime_ns()
+
+        # То же окно (resets_at совпадает), но процент откатился: 6 < 22.
+        run(json.dumps({
+            "rate_limits": {
+                "five_hour": {"used_percentage": 6, "resets_at": 1787883600},
+                "seven_day": {"used_percentage": 33, "resets_at": 1788206400},
+            }
+        }).encode(), self.state)
+
+        self.assertEqual(self.read_state(), good, "утилизация внутри окна не убывает")
+        self.assertEqual(self.mtime_ns(), before_mtime)
+
+    def test_step_back_in_the_weekly_window_alone_is_ignored(self):
+        # 5-часовое окно выросло, а недельное откатилось — показание всё равно отставшее.
+        run(json.dumps(self.GOOD).encode(), self.state)
+        good = self.read_state()
+
+        run(json.dumps({
+            "rate_limits": {
+                "five_hour": {"used_percentage": 23, "resets_at": 1787883600},
+                "seven_day": {"used_percentage": 32, "resets_at": 1788206400},
+            }
+        }).encode(), self.state)
+
+        self.assertEqual(self.read_state(), good)
+
+    def test_growth_inside_the_window_is_still_recorded(self):
+        run(json.dumps(self.GOOD).encode(), self.state)
+
+        run(json.dumps({
+            "rate_limits": {
+                "five_hour": {"used_percentage": 23, "resets_at": 1787883600},
+                "seven_day": {"used_percentage": 35, "resets_at": 1788206400},
+            }
+        }).encode(), self.state)
+
+        self.assertEqual(self.read_state()["five_hour"]["used_percentage"], 23)
+
+    def test_a_reset_window_may_drop_to_zero(self):
+        # Окно сбросилось по-настоящему: resets_at СДВИНУЛСЯ вперёд — падение законно,
+        # и правило «не откатываться» не имеет права его съесть.
+        run(json.dumps(self.GOOD).encode(), self.state)
+
+        run(json.dumps({
+            "rate_limits": {
+                "five_hour": {"used_percentage": 0, "resets_at": 1787901600},
+                "seven_day": {"used_percentage": 35, "resets_at": 1788206400},
+            }
+        }).encode(), self.state)
+
+        rec = self.read_state()
+        self.assertEqual(rec["five_hour"], {"used_percentage": 0, "resets_at": 1787901600})
+
+    def test_lagging_session_cannot_delay_a_later_good_reading(self):
+        # Отставшая сессия между двумя хорошими не должна ничего испортить.
+        run(json.dumps(self.GOOD).encode(), self.state)
+        run(json.dumps({
+            "rate_limits": {"five_hour": {"used_percentage": 6, "resets_at": 1787883600}}
+        }).encode(), self.state)
+        run(json.dumps({
+            "rate_limits": {
+                "five_hour": {"used_percentage": 24, "resets_at": 1787883600},
+                "seven_day": {"used_percentage": 36, "resets_at": 1788206400},
+            }
+        }).encode(), self.state)
+
+        rec = self.read_state()
+        self.assertEqual(rec["five_hour"]["used_percentage"], 24)
+        self.assertEqual(rec["seven_day"]["used_percentage"], 36)
+
+    def test_corrupt_record_does_not_block_a_fresh_reading(self):
+        # Битую запись сравнивать не с чем — правило отката не должно её «защищать».
+        self.seed({"capturedAt": 1000000000, "five_hour": {"used_percentage": "нет",
+                                                           "resets_at": None}})
+        run(json.dumps(self.GOOD).encode(), self.state)
+
+        self.assertEqual(self.read_state()["five_hour"]["used_percentage"], 22)
 
     # --- transparency ---
 

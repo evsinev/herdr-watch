@@ -53,14 +53,29 @@ export interface ClaudeUsageWindow {
   resetsAt: number; // unix seconds
 }
 
+/**
+ * Кто наблюдал показания. Набор ОТКРЫТ: бэкенд волен завести третий источник, и
+ * незнакомое имя обязано доехать до экрана как есть, а не превратиться в «нет данных».
+ */
+export type ClaudeUsageSource = "NONE" | "STATUSLINE" | "ACCOUNT_API" | (string & {});
+
+/** Недельное окно, привязанное к модели. Имя модели — как прислал сервер. */
+export interface ClaudeUsageModelWindow {
+  model: string;
+  usedPercent: number; // целые проценты 0..100
+  resetsAt: number; // unix seconds
+}
+
 export interface ClaudeUsage {
   state: ClaudeUsageState;
+  source: ClaudeUsageSource; // никогда не null
   capturedAt: number | null; // unix seconds; null — показаний не было ни разу
   error: string | null; // причина деградации
   windows: {
     fiveHour: ClaudeUsageWindow | null;
     sevenDay: ClaudeUsageWindow | null;
   };
+  models: ClaudeUsageModelWindow[]; // пусто, если помодельных окон не отдали
 }
 
 // SSE-события (безымянные message-события {type, data}).
