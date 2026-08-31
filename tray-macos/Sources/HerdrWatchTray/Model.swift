@@ -45,13 +45,45 @@ struct HostState: Decodable {
     var agents: [Agent]?
 }
 
+// Квота подписки Claude — зеркало backend `usage/ClaudeUsage.java` (SSE `claude_usage`,
+// `GET /api/claude-usage`). Отсутствующее окно приходит как null и НИКОГДА не как 0%:
+// «не отчитывалось» и «ничего не потратили» — разные вещи. `source`/`models` опциональны
+// намеренно — сервер постарше их не отдаёт, и это не повод уронить декодирование.
+
+struct UsageWindow: Decodable {
+    var usedPercent: Int
+    var resetsAt: Double         // unix-время сброса окна
+}
+
+struct UsageWindows: Decodable {
+    var fiveHour: UsageWindow?
+    var sevenDay: UsageWindow?
+}
+
+struct UsageModelWindow: Decodable {
+    var model: String            // имя модели как его прислал сервер (набор ОТКРЫТ)
+    var usedPercent: Int
+    var resetsAt: Double
+}
+
+struct ClaudeUsage: Decodable {
+    var state: String            // NOT_CONFIGURED | OK | STALE
+    var source: String?          // NONE | STATUSLINE | ACCOUNT_API
+    var capturedAt: Double?      // unix-время снятия показаний
+    var error: String?
+    var windows: UsageWindows?
+    var models: [UsageModelWindow]?
+}
+
 // SSE envelope: { "type": ..., "data": ... }. `data` shape depends on `type`.
 struct StreamEvent: Decodable {
     enum Payload {
         case snapshot([HostState])   // whole fleet
         case update(HostState)       // one host
         case remove(String)          // host id
+        case usage(ClaudeUsage)      // Claude subscription quota (whole account)
         case ping                    // keepalive — no data, ignored
+        case unknown(String)         // event type this build doesn't know
     }
     let payload: Payload
 
@@ -68,13 +100,17 @@ struct StreamEvent: Decodable {
         case "host_remove":
             let holder = try c.decode([String: String].self, forKey: .data)
             payload = .remove(holder["id"] ?? "")
+        case "claude_usage":
+            payload = .usage(try c.decode(ClaudeUsage.self, forKey: .data))
         case "ping":
             // Heartbeat from the server (data is null). MUST decode successfully so the
             // eager-decode buffer in SSEClient clears; a thrown error would poison it.
             payload = .ping
         default:
-            throw DecodingError.dataCorruptedError(
-                forKey: .type, in: c, debugDescription: "unknown stream event type: \(type)")
+            // Тоже ОБЯЗАНО декодироваться: на брошенной ошибке eager-буфер в SSEClient
+            // не очищается, следующая строка дописывается к нему — и поток отравлен
+            // навсегда. Незнакомое событие игнорируем, а не роняем стрим.
+            payload = .unknown(type)
         }
     }
 }

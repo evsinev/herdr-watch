@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onConnected: { [weak self] connected in
                 self?.store.connected = connected
                 self?.render()
+                if connected { self?.fetchUsage() }
             })
         sse.start()
 
@@ -24,6 +25,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // instead of waiting for the stale connection to time out.
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(onWake), name: NSWorkspace.didWakeNotification, object: nil)
+
+        // Полосы квоты — ЦВЕТНОЕ изображение (isTemplate = false), автоинверсии под тему
+        // меню-бара у него нет: цвет дорожек мы считаем сами из effectiveAppearance.
+        // Значит и перерисовать иконку нужно при смене темы.
+        DistributedNotificationCenter.default.addObserver(
+            self, selector: #selector(onThemeChange),
+            name: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil)
+    }
+
+    @objc private func onThemeChange() {
+        DispatchQueue.main.async { [weak self] in self?.render() }
     }
 
     @objc private func onWake() {
@@ -46,6 +58,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case .remove(let id):
             store.applyRemove(id)
+        case .usage(let usage):
+            store.usage = usage
+        case .unknown(let type):
+            Diag.log("ignoring unknown event type: \(type)")
+            return   // ничего не изменилось — и рендерить нечего
         }
         render()
     }
@@ -62,6 +79,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Notifier.shared.post(title: title, body: body, sound: sound)
     }
 
+    /// Событие `claude_usage` сервер шлёт ТОЛЬКО при изменении цифр — в отличие от
+    /// `snapshot`, на подключение оно не приходит. Поэтому квоту на каждом
+    /// (пере)подключении добираем разово через REST: иначе после старта трея полос нет
+    /// до первого движения квоты, а оно бывает раз в десятки минут.
+    private func fetchUsage() {
+        guard let url = Settings.baseURL?.appendingPathComponent("api/claude-usage") else { return }
+        Task { [weak self] in
+            let cfg = URLSessionConfiguration.ephemeral
+            cfg.timeoutIntervalForRequest = 10
+            cfg.waitsForConnectivity = false
+            let session = URLSession(configuration: cfg)
+            defer { session.invalidateAndCancel() }
+            do {
+                let (data, response) = try await session.data(from: url)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                    Diag.log("usage fetch: bad response \(response)")
+                    return
+                }
+                let usage = try JSONDecoder().decode(ClaudeUsage.self, from: data)
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    self.store.usage = usage
+                    self.render()
+                }
+            } catch {
+                Diag.log("usage fetch failed: \(error)")   // не критично: SSE догонит
+            }
+        }
+    }
+
     private func reconnect() {
         store.connected = false
         render()
@@ -69,6 +116,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - UI (main thread)
+
+    // Строки-подписи (агенты, квота, «No agents») кликабельного смысла не несут, но
+    // ВКЛЮЧЕНЫ (`isEnabled = true` при `autoenablesItems = false`). Проверено на живом
+    // меню: disabled-строку AppKit гасит СВЕРХУ, поверх любого `foregroundColor` в
+    // attributedTitle, — на тёмном меню её едва видно, и цветом это не лечится. Цена
+    // включения — подсветка под курсором и то, что клик просто закрывает меню (action
+    // нет, делать нечего); читаемость важнее. Явные цвета ниже с этого момента работают.
+    /// Оттенок задаём ЯВНО, а не как `labelColor.withAlphaComponent(…)`: сам `labelColor`
+    /// в тёмной теме уже не белый (≈85 %), альфа множилась поверх него — и шаг яркости
+    /// получался почти неразличимым. Здесь непрозрачный серый, отдельно на каждую тему:
+    /// светлый на тёмном меню, тёмный на светлом. 0.65 — замер с образца, который дал
+    /// заказчик (ядро текста там 0.637), а не подобранное на глаз число.
+    private static let infoFont = NSFont.menuFont(ofSize: 0)
+    private static let infoColor = menuGray(dark: 0.65, light: 0.38)
+    /// Приглушённый — только там, где приглушение НЕСЁТ СМЫСЛ: недоступный хост,
+    /// устаревшие показания квоты.
+    private static let mutedColor = menuGray(dark: 0.42, light: 0.58)
+
+    private static func menuGray(dark: CGFloat, light: CGFloat) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            return NSColor(white: isDark ? dark : light, alpha: 1)
+        }
+    }
 
     private func render() {
         updateIcon()
@@ -86,10 +157,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         button.appearsDisabled = false
-        button.image = AgentStatus.statusItemImage(tint: store.attentionTint())
+        // Полосы квоты ЗАМЕНЯЮТ иконку-символ. В меню-баре места мало: 5h + 7d + не
+        // больше двух помодельных окон; полный список — в выпадающем меню.
+        let gauges = store.usageGauges(maxModels: 2)
+        button.image = UsageRender.statusItemImage(
+            tint: store.attentionTint(), gauges: gauges,
+            stale: store.usageIsStale, appearance: button.effectiveAppearance)
         let c = store.counts()
         button.title = Settings.showCounter ? counterText(c) : ""
-        button.toolTip = "herdr-watch — \(c.blocked) blocked · \(c.done) done · \(c.working) working"
+        var tip = "herdr-watch — \(c.blocked) blocked · \(c.done) done · \(c.working) working"
+        if !gauges.isEmpty {
+            tip += "\nclaude quota — " + gauges.map { "\($0.label) \($0.clamped)%" }.joined(separator: " · ")
+        }
+        button.toolTip = tip
     }
 
     private func counterText(_ c: FleetStore.Counts) -> String {
@@ -111,19 +191,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 addInfo(menu, "No agents")
             } else {
                 for row in rows {
-                    let text = "\(row.host)   \(row.project)   [\(row.status)]"
-                    let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
-                    item.isEnabled = false
-                    item.image = AgentStatus.dot(row.color)
-                    if row.dim {
-                        item.attributedTitle = NSAttributedString(
-                            string: text,
-                            attributes: [.foregroundColor: NSColor.disabledControlTextColor])
-                    }
-                    menu.addItem(item)
+                    addRow(menu, "\(row.host)   \(row.project)   [\(row.status)]",
+                           image: AgentStatus.dot(row.color),
+                           color: row.dim ? Self.mutedColor : Self.infoColor)
                 }
             }
         }
+
+        addUsage(menu)
 
         menu.addItem(.separator())
 
@@ -140,10 +215,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return menu
     }
 
-    private func addInfo(_ menu: NSMenu, _ text: String) {
+    /// Блок квоты: заголовок с источником и возрастом показаний + строка на окно.
+    /// Не рисуется вовсе, когда показывать нечего (хук не установлен / ни одно окно не
+    /// отчиталось) — ровно как `hasUsage()` во фронтенде.
+    private func addUsage(_ menu: NSMenu) {
+        let gauges = store.usageGauges()
+        guard let usage = store.usage, !gauges.isEmpty else { return }
+        let stale = store.usageIsStale
+
+        menu.addItem(.separator())
+
+        var meta: [String] = []
+        if stale { meta.append("stale") }
+        if let source = UsageText.source(usage.source) { meta.append(source) }
+        meta.append(usage.capturedAt.map { UsageText.ago($0) } ?? "no reading")
+        // «claude · account»: цифры относятся к аккаунту Claude, а не к машине, и спутать
+        // эти вещи нельзя.
+        addInfo(menu, "claude · account   —   " + meta.joined(separator: " · "),
+                color: stale ? Self.mutedColor : Self.infoColor)
+
+        let width = gauges.map { $0.label.count }.max() ?? 2
+        let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        for gauge in gauges {
+            let label = gauge.label.padding(toLength: width, withPad: " ", startingAt: 0)
+            var text = String(format: "%@  %3d%%", label, gauge.clamped)
+            if let resetsAt = gauge.resetsAt { text += "   " + UsageText.untilReset(resetsAt) }
+            let item = addRow(menu, text,
+                              image: UsageRender.menuRowImage(percent: gauge.clamped, stale: stale),
+                              color: stale ? Self.mutedColor : Self.infoColor, font: font)
+            if stale, let error = usage.error { item.toolTip = error }
+        }
+    }
+
+    private func addInfo(_ menu: NSMenu, _ text: String, color: NSColor = AppDelegate.infoColor) {
+        addRow(menu, text, image: nil, color: color)
+    }
+
+    /// Инертная строка: рисуем её сами (см. `MenuRowView`). `title` всё равно проставляем —
+    /// вьюха рисует, но озвучивает строку VoiceOver именно он.
+    @discardableResult
+    private func addRow(_ menu: NSMenu, _ text: String, image: NSImage?, color: NSColor,
+                        font: NSFont = AppDelegate.infoFont) -> NSMenuItem {
         let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
-        item.isEnabled = false
+        item.view = MenuRowView(image: image, text: NSAttributedString(
+            string: text, attributes: [.font: font, .foregroundColor: color]))
         menu.addItem(item)
+        return item
     }
 
     // MARK: - Actions
