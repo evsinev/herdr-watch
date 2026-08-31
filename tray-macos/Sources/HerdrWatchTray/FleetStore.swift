@@ -5,6 +5,8 @@ import AppKit
 final class FleetStore {
     private(set) var hosts: [String: HostState] = [:]
     var connected = false
+    /// Квота аккаунта Claude — не про хосты, поэтому живёт рядом, а не внутри HostState.
+    var usage: ClaudeUsage?
 
     func applySnapshot(_ list: [HostState]) {
         // Full replace — this is the connect/reconnect baseline, so it emits no transitions.
@@ -82,6 +84,36 @@ final class FleetStore {
         if c.blocked > 0 { return AgentStatus.color("blocked") }
         if c.done > 0 { return AgentStatus.color("done") }
         return nil
+    }
+
+    // MARK: - Claude quota
+
+    var usageIsStale: Bool { usage?.state == "STALE" }
+
+    /// Окна квоты в порядке отображения: `5h`, `7d`, затем помодельные (fable/opus/…).
+    ///
+    /// Отсутствующее окно ОПУСКАЕТСЯ, а не рисуется нулём: пустая полоса неотличима от
+    /// 0%, а «не отчитывалось» и «ничего не потратили» — разные вещи (тот же инвариант,
+    /// что и у бэкенда с `null`-окнами).
+    ///
+    /// Помодельные окна отдаёт только аккаунт-API (`claude-usage.source: pull|auto`), так
+    /// что под дефолтным push полос будет две. Они же — разбивка недельного окна, а не
+    /// третье окно, которое тебя останавливает: без 5h/7d сами по себе не показываются.
+    /// `maxModels` ограничивает их число в меню-баре — место там не бесконечное.
+    func usageGauges(maxModels: Int = .max) -> [UsageGauge] {
+        guard let usage = usage, usage.state != "NOT_CONFIGURED" else { return [] }
+        var out: [UsageGauge] = []
+        if let w = usage.windows?.fiveHour {
+            out.append(UsageGauge(label: "5h", percent: w.usedPercent, resetsAt: w.resetsAt))
+        }
+        if let w = usage.windows?.sevenDay {
+            out.append(UsageGauge(label: "7d", percent: w.usedPercent, resetsAt: w.resetsAt))
+        }
+        guard !out.isEmpty else { return [] }
+        for m in (usage.models ?? []).prefix(max(0, maxModels)) {
+            out.append(UsageGauge(label: m.model.lowercased(), percent: m.usedPercent, resetsAt: nil))
+        }
+        return out
     }
 
     struct Row {
