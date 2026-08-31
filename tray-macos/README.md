@@ -3,16 +3,16 @@
 A tiny native macOS agent that lives in the menu bar and mirrors the fleet state from a
 running [herdr-watch](../README.md) server over HTTP + SSE.
 
-- **Icon color = fleet state** (level-based):
-  - an agent needs input (`blocked`) → **red** icon;
-  - otherwise a task finished (`done`) → **blue** icon;
-  - otherwise → **monochrome** icon that auto-adapts to the menu-bar theme (white on dark,
-    black on light) via `NSImage.isTemplate`.
-- **Claude quota bars** — mini vertical bars right of the icon, one per reported window:
+- **Menu-bar item = Claude quota bars** — mini vertical bars, one per reported window:
   `5h`, `7d`, then the per-model weekly windows (`fable`, `opus`, … — max two in the menu
   bar, all of them in the menu). Fill height = utilization, color = the 70 % / 90 % bands
   shared with the UI. A window that isn't reported is **omitted**, never drawn as 0 %; a
-  stale reading is dimmed. With no reported window the icon is exactly what it was before.
+  stale reading is dimmed. The fleet's attention level is carried by the counter next to
+  them (`⛔1 ✅2`).
+- **No quota reported → the icon-symbol fallback**, colored by fleet state (level-based):
+  `blocked` → **red**, else `done` → **blue**, else a **monochrome** icon that auto-adapts
+  to the menu-bar theme (white on dark, black on light) via `NSImage.isTemplate`. Without
+  it an unreported quota would mean an empty — i.e. vanished — menu-bar item.
 - **Click** → dropdown menu: one row per agent (colored dot + `host  title  [status]`,
   blocked on top), then the quota block (`claude · account` + source/age header and a
   `5h  34%  2h 34m` row per window), plus **Open dashboard…**, **Settings…**, **Quit**.
@@ -52,9 +52,13 @@ open HerdrWatchTray.app
 - The quota is fetched over REST (`/api/claude-usage`) on every (re)connect: the SSE
   `claude_usage` event only fires when the numbers move, so without it the bars would be
   missing until the next change.
-- Bars make the icon a colored (non-template) image, so its symbol no longer auto-inverts —
-  the tray resolves the symbol color from the status item's `effectiveAppearance` and
-  re-renders on `AppleInterfaceThemeChangedNotification`.
+- Bars are a colored (non-template) image, so they don't auto-invert with the menu-bar
+  theme — the tray resolves the track color from the status item's `effectiveAppearance`
+  and re-renders on `AppleInterfaceThemeChangedNotification`.
+- Menu rows are `isEnabled = false` (inert info), and AppKit draws disabled rows in its own
+  faint gray — barely legible on a dark menu. They carry an explicit `foregroundColor` in
+  `attributedTitle`, which overrides that; the muted tone is left for what it actually
+  means: an unreachable host, a stale quota reading.
 - No server heartbeat: the client reconnects with backoff and re-applies the fresh
   `snapshot` the server sends on every (re)connect.
 - Launch-at-Login uses `SMAppService` and only works from the packaged `.app`, not from a

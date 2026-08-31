@@ -26,9 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(onWake), name: NSWorkspace.didWakeNotification, object: nil)
 
-        // С полосами квоты иконка становится ЦВЕТНОЙ (isTemplate = false), а значит
-        // теряет автоинверсию под тему меню-бара — цвет символа мы считаем сами из
-        // effectiveAppearance. Значит и перерисовать её нужно при смене темы.
+        // Полосы квоты — ЦВЕТНОЕ изображение (isTemplate = false), автоинверсии под тему
+        // меню-бара у него нет: цвет дорожек мы считаем сами из effectiveAppearance.
+        // Значит и перерисовать иконку нужно при смене темы.
         DistributedNotificationCenter.default.addObserver(
             self, selector: #selector(onThemeChange),
             name: NSNotification.Name("AppleInterfaceThemeChangedNotification"), object: nil)
@@ -117,6 +117,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - UI (main thread)
 
+    // Строки-подписи (агенты, квота, «No agents») намеренно disabled: клик по ним ничего
+    // не значит. Но disabled-строку AppKit рисует СВОИМ тусклым серым, и на тёмном меню
+    // его плохо видно. Явный цвет в attributedTitle это перебивает — строка остаётся
+    // инертной (не подсвечивается под курсором), но читается нормально.
+    private static let infoFont = NSFont.menuFont(ofSize: 0)
+    private static let infoColor = NSColor.labelColor
+    /// Приглушённый — только там, где приглушение НЕСЁТ СМЫСЛ: недоступный хост,
+    /// устаревшие показания квоты.
+    private static let mutedColor = NSColor.secondaryLabelColor
+
     private func render() {
         updateIcon()
         statusItem.menu = buildMenu()
@@ -133,8 +143,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         button.appearsDisabled = false
-        // В меню-баре места мало: 5h + 7d + не больше двух помодельных окон. Полный
-        // список — в выпадающем меню.
+        // Полосы квоты ЗАМЕНЯЮТ иконку-символ. В меню-баре места мало: 5h + 7d + не
+        // больше двух помодельных окон; полный список — в выпадающем меню.
         let gauges = store.usageGauges(maxModels: 2)
         button.image = UsageRender.statusItemImage(
             tint: store.attentionTint(), gauges: gauges,
@@ -171,11 +181,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
                     item.isEnabled = false
                     item.image = AgentStatus.dot(row.color)
-                    if row.dim {
-                        item.attributedTitle = NSAttributedString(
-                            string: text,
-                            attributes: [.foregroundColor: NSColor.disabledControlTextColor])
-                    }
+                    item.attributedTitle = NSAttributedString(string: text, attributes: [
+                        .font: Self.infoFont,
+                        .foregroundColor: row.dim ? Self.mutedColor : Self.infoColor,
+                    ])
                     menu.addItem(item)
                 }
             }
@@ -214,7 +223,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         meta.append(usage.capturedAt.map { UsageText.ago($0) } ?? "no reading")
         // «claude · account»: цифры относятся к аккаунту Claude, а не к машине, и спутать
         // эти вещи нельзя.
-        addInfo(menu, "claude · account   —   " + meta.joined(separator: " · "))
+        addInfo(menu, "claude · account   —   " + meta.joined(separator: " · "),
+                color: stale ? Self.mutedColor : Self.infoColor)
 
         let width = gauges.map { $0.label.count }.max() ?? 2
         let font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
@@ -225,15 +235,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
             item.isEnabled = false
             item.image = UsageRender.menuRowImage(percent: gauge.clamped, stale: stale)
-            item.attributedTitle = NSAttributedString(string: text, attributes: [.font: font])
+            item.attributedTitle = NSAttributedString(string: text, attributes: [
+                .font: font,
+                .foregroundColor: stale ? Self.mutedColor : Self.infoColor,
+            ])
             if stale, let error = usage.error { item.toolTip = error }
             menu.addItem(item)
         }
     }
 
-    private func addInfo(_ menu: NSMenu, _ text: String) {
+    private func addInfo(_ menu: NSMenu, _ text: String, color: NSColor = AppDelegate.infoColor) {
         let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
         item.isEnabled = false
+        item.attributedTitle = NSAttributedString(
+            string: text, attributes: [.font: Self.infoFont, .foregroundColor: color])
         menu.addItem(item)
     }
 

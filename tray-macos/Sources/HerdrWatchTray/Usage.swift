@@ -68,43 +68,41 @@ enum UsageRender {
     private static let barWidth: CGFloat = 3
     private static let barGap: CGFloat = 2
     private static let barHeight: CGFloat = 12
-    private static let symbolGap: CGFloat = 5
 
-    /// Иконка меню-бара: символ статуса + вертикальные полосы квоты справа от него.
+    /// Иконка меню-бара: ТОЛЬКО вертикальные полосы квоты — символ они заменяют,
+    /// а не дополняют (место в меню-баре дороже второго индикатора того же приложения).
     ///
-    /// Без окон возвращаем РОВНО прежнюю иконку (template — macOS сам инвертирует её
-    /// под тему меню-бара). С полосами композит обязан быть цветным, автоинверсии у
-    /// него больше нет, поэтому цвет символа берём из `effectiveAppearance` кнопки
-    /// статус-айтема: это единственное, что знает, тёмный сейчас меню-бар или светлый.
+    /// Полосы цветные, значит `isTemplate = false` и автоинверсии под тему меню-бара у
+    /// изображения больше нет: цвет дорожки берём из `effectiveAppearance` кнопки
+    /// статус-айтема — это единственное, что знает, тёмный сейчас меню-бар или светлый.
+    ///
+    /// Без окон рисовать нечего, и пустой статус-айтем — это исчезнувший из меню-бара
+    /// трей: тогда (и только тогда) возвращаем прежнюю иконку-символ с её tint'ом
+    /// по состоянию фермы. Уровень внимания фермы в остальное время несёт счётчик
+    /// рядом с иконкой (`⛔1 ✅2`).
     static func statusItemImage(tint: NSColor?, gauges: [UsageGauge], stale: Bool,
                                appearance: NSAppearance) -> NSImage {
         guard !gauges.isEmpty else { return AgentStatus.statusItemImage(tint: tint) }
 
-        let label = resolvedLabelColor(appearance)
-        let symbol = AgentStatus.statusItemImage(tint: tint ?? label)
-        let symbolSize = symbol.size
-        let barsWidth = CGFloat(gauges.count) * barWidth + CGFloat(gauges.count - 1) * barGap
-        let size = NSSize(width: symbolSize.width + symbolGap + barsWidth,
-                          height: max(symbolSize.height, barHeight))
+        let track = resolvedLabelColor(appearance)
+        let size = NSSize(width: CGFloat(gauges.count) * barWidth + CGFloat(gauges.count - 1) * barGap,
+                          height: barHeight)
 
         let image = NSImage(size: size)
         image.lockFocus()
-        symbol.draw(in: NSRect(x: 0, y: (size.height - symbolSize.height) / 2,
-                              width: symbolSize.width, height: symbolSize.height))
         // STALE не занижает полосу (цифры остаются лучшим, что у нас есть), но глазом
         // отличаться обязан — гасим прозрачностью, как приглушённая плитка в UI.
         let alpha: CGFloat = stale ? 0.45 : 1
-        var x = symbolSize.width + symbolGap
-        let y = (size.height - barHeight) / 2
+        var x: CGFloat = 0
         for gauge in gauges {
-            label.withAlphaComponent(0.16 * alpha).setFill()
-            pill(NSRect(x: x, y: y, width: barWidth, height: barHeight)).fill()
+            track.withAlphaComponent(0.16 * alpha).setFill()
+            pill(NSRect(x: x, y: 0, width: barWidth, height: barHeight)).fill()
             let percent = gauge.clamped
             if percent > 0 {
                 // Минимум 2pt: 1% иначе даёт 0.13pt и «есть расход» выглядит как ноль.
                 let height = max(2, barHeight * CGFloat(percent) / 100)
                 UsageBands.color(percent).withAlphaComponent(alpha).setFill()
-                pill(NSRect(x: x, y: y, width: barWidth, height: height)).fill()
+                pill(NSRect(x: x, y: 0, width: barWidth, height: height)).fill()
             }
             x += barWidth + barGap
         }
