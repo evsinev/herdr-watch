@@ -117,15 +117,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - UI (main thread)
 
-    // Строки-подписи (агенты, квота, «No agents») намеренно disabled: клик по ним ничего
-    // не значит. Но disabled-строку AppKit рисует СВОИМ тусклым серым, и на тёмном меню
-    // его плохо видно. Явный цвет в attributedTitle это перебивает — строка остаётся
-    // инертной (не подсвечивается под курсором), но читается нормально.
+    // Строки-подписи (агенты, квота, «No agents») кликабельного смысла не несут, но
+    // ВКЛЮЧЕНЫ (`isEnabled = true` при `autoenablesItems = false`). Проверено на живом
+    // меню: disabled-строку AppKit гасит СВЕРХУ, поверх любого `foregroundColor` в
+    // attributedTitle, — на тёмном меню её едва видно, и цветом это не лечится. Цена
+    // включения — подсветка под курсором и то, что клик просто закрывает меню (action
+    // нет, делать нечего); читаемость важнее. Явные цвета ниже с этого момента работают.
+    /// Оттенок задаём ЯВНО, а не как `labelColor.withAlphaComponent(…)`: сам `labelColor`
+    /// в тёмной теме уже не белый (≈85 %), альфа множилась поверх него — и шаг яркости
+    /// получался почти неразличимым. Здесь непрозрачный серый, отдельно на каждую тему:
+    /// светлый на тёмном меню, тёмный на светлом. 0.65 — замер с образца, который дал
+    /// заказчик (ядро текста там 0.637), а не подобранное на глаз число.
     private static let infoFont = NSFont.menuFont(ofSize: 0)
-    private static let infoColor = NSColor.labelColor
+    private static let infoColor = menuGray(dark: 0.65, light: 0.38)
     /// Приглушённый — только там, где приглушение НЕСЁТ СМЫСЛ: недоступный хост,
     /// устаревшие показания квоты.
-    private static let mutedColor = NSColor.secondaryLabelColor
+    private static let mutedColor = menuGray(dark: 0.42, light: 0.58)
+
+    private static func menuGray(dark: CGFloat, light: CGFloat) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            return NSColor(white: isDark ? dark : light, alpha: 1)
+        }
+    }
 
     private func render() {
         updateIcon()
@@ -177,15 +191,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 addInfo(menu, "No agents")
             } else {
                 for row in rows {
-                    let text = "\(row.host)   \(row.project)   [\(row.status)]"
-                    let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
-                    item.isEnabled = false
-                    item.image = AgentStatus.dot(row.color)
-                    item.attributedTitle = NSAttributedString(string: text, attributes: [
-                        .font: Self.infoFont,
-                        .foregroundColor: row.dim ? Self.mutedColor : Self.infoColor,
-                    ])
-                    menu.addItem(item)
+                    addRow(menu, "\(row.host)   \(row.project)   [\(row.status)]",
+                           image: AgentStatus.dot(row.color),
+                           color: row.dim ? Self.mutedColor : Self.infoColor)
                 }
             }
         }
@@ -232,24 +240,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let label = gauge.label.padding(toLength: width, withPad: " ", startingAt: 0)
             var text = String(format: "%@  %3d%%", label, gauge.clamped)
             if let resetsAt = gauge.resetsAt { text += "   " + UsageText.untilReset(resetsAt) }
-            let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
-            item.isEnabled = false
-            item.image = UsageRender.menuRowImage(percent: gauge.clamped, stale: stale)
-            item.attributedTitle = NSAttributedString(string: text, attributes: [
-                .font: font,
-                .foregroundColor: stale ? Self.mutedColor : Self.infoColor,
-            ])
+            let item = addRow(menu, text,
+                              image: UsageRender.menuRowImage(percent: gauge.clamped, stale: stale),
+                              color: stale ? Self.mutedColor : Self.infoColor, font: font)
             if stale, let error = usage.error { item.toolTip = error }
-            menu.addItem(item)
         }
     }
 
     private func addInfo(_ menu: NSMenu, _ text: String, color: NSColor = AppDelegate.infoColor) {
+        addRow(menu, text, image: nil, color: color)
+    }
+
+    /// Инертная строка: рисуем её сами (см. `MenuRowView`). `title` всё равно проставляем —
+    /// вьюха рисует, но озвучивает строку VoiceOver именно он.
+    @discardableResult
+    private func addRow(_ menu: NSMenu, _ text: String, image: NSImage?, color: NSColor,
+                        font: NSFont = AppDelegate.infoFont) -> NSMenuItem {
         let item = NSMenuItem(title: text, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        item.attributedTitle = NSAttributedString(
-            string: text, attributes: [.font: Self.infoFont, .foregroundColor: color])
+        item.view = MenuRowView(image: image, text: NSAttributedString(
+            string: text, attributes: [.font: font, .foregroundColor: color]))
         menu.addItem(item)
+        return item
     }
 
     // MARK: - Actions

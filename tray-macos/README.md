@@ -55,10 +55,17 @@ open HerdrWatchTray.app
 - Bars are a colored (non-template) image, so they don't auto-invert with the menu-bar
   theme — the tray resolves the track color from the status item's `effectiveAppearance`
   and re-renders on `AppleInterfaceThemeChangedNotification`.
-- Menu rows are `isEnabled = false` (inert info), and AppKit draws disabled rows in its own
-  faint gray — barely legible on a dark menu. They carry an explicit `foregroundColor` in
-  `attributedTitle`, which overrides that; the muted tone is left for what it actually
-  means: an unreachable host, a stale quota reading.
+- Menu info rows (agents, quota) are drawn by a custom `MenuRowView` instead of a standard
+  item. Both alternatives fail: a *disabled* item is inert but AppKit dims it on top of
+  whatever `foregroundColor` the `attributedTitle` sets — barely legible on a dark menu,
+  and no color fixes it — while an *enabled* item is legible but highlights under the
+  cursor and so lies about being clickable. The custom view separates the two: our color,
+  no highlight. Its metrics are measured off a real menu (title inset 20.5 pt, row height
+  22 pt) so the columns line up with the action items.
+- Row color is an explicit per-theme gray (0.65 white on dark, 0.38 on light), not
+  `labelColor.withAlphaComponent(…)`: `labelColor` is already ~85 % white in dark mode, so
+  the alpha compounded and brightness steps came out invisible. The muted gray (0.42 / 0.58)
+  is left for what it actually means: an unreachable host, a stale quota reading.
 - No server heartbeat: the client reconnects with backoff and re-applies the fresh
   `snapshot` the server sends on every (re)connect.
 - Launch-at-Login uses `SMAppService` and only works from the packaged `.app`, not from a
